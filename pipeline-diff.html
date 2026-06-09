@@ -566,6 +566,66 @@ function setupCard(type, week) {
   });
 }
 
+// ─── Inventory parser (multi-row header) ─────────────────────────────────────
+// raw[2]: 기본헤더  raw[3]: 금액 대분류  raw[4]: 금액 세부  raw[5]+: data
+// 프로젝트코드: fixed at column index 2
+// 제품합계: row[4]에서 '제품 합계' 탐지   상품/용역/유지보수/총합계: row[3]에서 탐지
+
+function parseInventorySheet(wb) {
+  for (const sname of wb.SheetNames) {
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[sname], { header: 1, defval: '' });
+    if (raw.length < 6) continue;
+
+    const row2 = raw[2] || [];
+    const row3 = raw[3] || [];
+    const row4 = raw[4] || [];
+
+    const findCol = (rows, pattern) => {
+      for (const row of rows) {
+        for (let i = 0; i < row.length; i++) {
+          const v = String(row[i] || '').trim();
+          if (!v) continue;
+          if (pattern instanceof RegExp ? pattern.test(v) : v.includes(pattern)) return i;
+        }
+      }
+      return -1;
+    };
+
+    const colCode    = 2;
+    const colName    = findCol([row2, row3], '프로젝트명');
+    const colCust    = findCol([row2, row3], '고객사');
+    const colSales   = findCol([row2, row3], /영업담당|영업대표/);
+    const colStatus  = findCol([row2, row3], /수주.?확도/);
+    const colTotal   = findCol([row3],       /총.?합계/);
+    const colProduct = findCol([row4],       /제품.?합계/);
+    const colGoods   = findCol([row3],       /상품/);
+    const colService = findCol([row3],       /용역/);
+    const colMaint   = findCol([row3],       /유지/);
+
+    const dataRows = raw.slice(5).filter(r => r[colCode] && String(r[colCode]).trim() !== '');
+    if (dataRows.length === 0) continue;
+
+    return dataRows.map(r => {
+      const s = col => col >= 0 ? String(r[col] ?? '') : '';
+      const n = col => col >= 0 ? (r[col] || 0) : 0;
+      const obj = {
+        '프로젝트코드': String(r[colCode] || '').trim(),
+        '프로젝트명':   s(colName).trim(),
+        '고객사명':     s(colCust).trim(),
+        '영업담당자':   s(colSales),
+        '수주확도':     s(colStatus),
+        '총합계':       n(colTotal),
+      };
+      if (colProduct >= 0) obj['제품합계']    = n(colProduct);
+      if (colGoods   >= 0) obj['상품합계']    = n(colGoods);
+      if (colService >= 0) obj['용역합계']    = n(colService);
+      if (colMaint   >= 0) obj['유지관리합계'] = n(colMaint);
+      return obj;
+    });
+  }
+  return [];
+}
+
 function processFile(file, type, week) {
   if (!file.name.match(/\.(xlsx|xls)$/i)) {
     alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
@@ -575,9 +635,13 @@ function processFile(file, type, week) {
   reader.onload = ev => {
     const wb = XLSX.read(ev.target.result, { type: 'binary' });
     let rows = [];
-    for (const sname of wb.SheetNames) {
-      const raw = XLSX.utils.sheet_to_json(wb.Sheets[sname], { defval: '' });
-      if (raw.length > 2) { rows = raw; break; }
+    if (type.startsWith('inv')) {
+      rows = parseInventorySheet(wb);
+    } else {
+      for (const sname of wb.SheetNames) {
+        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sname], { defval: '' });
+        if (raw.length > 2) { rows = raw; break; }
+      }
     }
     DATA[type][week] = rows;
     document.getElementById(`${type}-${week}-name`).textContent = file.name;
