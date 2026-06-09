@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>주간 파이프라인 변동이력</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -53,16 +54,10 @@
 
   /* Upload zone */
   .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-  .upload-card {
-    background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px;
-    padding: 28px; text-align: center; cursor: pointer; transition: all .2s; user-select: none;
-  }
+  .upload-card { background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; transition: all .2s; user-select: none; }
   .upload-card:hover { border-color: var(--accent); background: var(--surface2); }
   .upload-card.has-file { border-style: solid; border-color: var(--accent); }
-  .upload-card.drag-over {
-    border-color: var(--accent); background: rgba(79,110,247,0.12);
-    border-style: solid; transform: scale(1.01);
-  }
+  .upload-card.drag-over { border-color: var(--accent); background: rgba(79,110,247,0.12); border-style: solid; transform: scale(1.01); }
   .upload-icon { font-size: 28px; margin-bottom: 10px; }
   .upload-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
   .upload-hint { font-size: 12px; color: var(--text-sub); }
@@ -109,17 +104,17 @@
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--surface2); }
 
-  /* Change type badge */
+  /* Badge */
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
   .badge-new { background: #1d3a6e; color: var(--new); }
   .badge-del { background: #3d1f0f; color: var(--del); }
-  .badge-up { background: #0f2d1a; color: var(--up); }
-  .badge-down { background: #2d0f0f; color: var(--down); }
-  .badge-same { background: var(--surface2); color: var(--neutral); }
+  .badge-up  { background: #0f2d1a; color: var(--up); }
+  .badge-down{ background: #2d0f0f; color: var(--down); }
+  .badge-same{ background: var(--surface2); color: var(--neutral); }
 
   /* Amount diff */
   .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .diff-up { color: var(--up); font-weight: 600; }
+  .diff-up   { color: var(--up);  font-weight: 600; }
   .diff-down { color: var(--down); font-weight: 600; }
   .diff-zero { color: var(--text-sub); }
 
@@ -128,19 +123,182 @@
   .empty-state .e-icon { font-size: 40px; margin-bottom: 14px; opacity: .5; }
   .empty-state p { font-size: 14px; }
 
-  /* Misc */
   .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .code { font-family: monospace; font-size: 11px; color: var(--text-sub); }
-  tr.row-new td { background: #0d1a2e; }
-  tr.row-del td { background: #1e0e08; }
-  tr.row-up td { background: #091810; }
+  tr.row-new td  { background: #0d1a2e; }
+  tr.row-del td  { background: #1e0e08; }
+  tr.row-up td   { background: #091810; }
   tr.row-down td { background: #1c0c0c; }
+
+  /* ── 변동보고서 styles ──────────────────────────────────── */
+  .report-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+
+  .report-section { margin-bottom: 36px; }
+
+  .report-section-header {
+    display: flex; align-items: center; gap: 14px; padding: 14px 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px 10px 0 0;
+  }
+  .report-pct-badge {
+    background: var(--accent); color: #fff;
+    padding: 5px 16px; border-radius: 6px; font-size: 15px; font-weight: 800; flex-shrink: 0;
+  }
+  .report-section-title { font-size: 15px; font-weight: 700; }
+  .report-section-meta { margin-left: auto; font-size: 12px; color: var(--text-sub); text-align: right; line-height: 1.6; }
+
+  .report-body {
+    border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 10px 10px; padding: 20px 20px 8px;
+  }
+
+  .report-group { margin-bottom: 20px; }
+  .report-group-title {
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+    border-radius: 6px; margin-bottom: 10px; font-size: 13px; font-weight: 700;
+  }
+  .rg-meta { font-size: 12px; font-weight: 500; margin-left: 4px; opacity: .85; }
+  .rg-new  { background: #0d1a2e; color: var(--new); }
+  .rg-del  { background: #1e0e08; color: var(--del); }
+  .rg-up   { background: #091810; color: var(--up); }
+  .rg-down { background: #1c0c0c; color: var(--down); }
+
+  .project-cards { display: flex; flex-direction: column; gap: 8px; }
+
+  .project-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+  }
+  .pc-header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--surface2); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  .pc-code {
+    font-family: monospace; font-size: 11px; color: var(--accent);
+    background: #1d2344; padding: 2px 8px; border-radius: 4px; flex-shrink: 0;
+  }
+  .pc-name { font-size: 13px; font-weight: 600; flex: 1; min-width: 120px; }
+  .pc-cust { font-size: 12px; color: var(--text-sub); }
+
+  .cat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .cat-table th {
+    padding: 7px 14px; text-align: right; font-size: 11px; font-weight: 600;
+    color: var(--text-sub); background: var(--bg); border-bottom: 1px solid var(--border);
+    letter-spacing: .3px;
+  }
+  .cat-table th:first-child { text-align: left; width: 100px; }
+  .cat-table td {
+    padding: 7px 14px; text-align: right; border-bottom: 1px solid #1a1d2a;
+    font-variant-numeric: tabular-nums;
+  }
+  .cat-table td:first-child { text-align: left; color: var(--text-sub); }
+  .cat-table tr:last-child td { border-bottom: none; }
+  .cat-table tr.total-row td { font-weight: 700; color: var(--text); background: #0f1117; border-top: 1px solid var(--border); }
+
+  /* ── 파이프라인 / 매출 추이 탭 ──────────────────────────────────────── */
+  .trend-layout { display: flex; flex-direction: column; gap: 20px; }
+
+  .trend-input-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px;
+  }
+  .trend-input-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .trend-input-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .trend-toggle-btn {
+    margin-left: auto; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-sub); font-size: 11px; cursor: pointer;
+  }
+  .trend-toggle-btn:hover { color: var(--text); }
+  .json-hint { font-size: 11px; color: var(--text-sub); margin-bottom: 8px; line-height: 1.7; }
+  .json-hint code { color: var(--accent); background: #1d2344; padding: 1px 4px; border-radius: 3px; }
+  .json-textarea {
+    display: block; width: 100%; height: 120px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+    font-family: monospace; font-size: 11px; padding: 10px;
+    resize: vertical; outline: none; margin-bottom: 10px;
+  }
+  .json-textarea:focus { border-color: var(--accent); }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 24px 24px 16px;
+  }
+  .chart-card-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .chart-legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-sub); }
+  .legend-line { display: inline-block; width: 20px; height: 3px; border-radius: 2px; }
+  .legend-line-dash { display: inline-block; width: 20px; border-bottom: 2px dashed; }
+  .chart-wrap { position: relative; height: 400px; }
+
+  .slider-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .slider-label { font-size: 12px; color: var(--text-sub); white-space: nowrap; }
+  .slider-val { font-size: 12px; color: var(--accent); font-weight: 600; min-width: 54px; text-align: center; }
+  .range-slider {
+    -webkit-appearance: none; flex: 1; min-width: 80px;
+    height: 4px; background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+  }
+  .range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+  .range-slider::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+  }
+
+  .detail-panel {
+    background: var(--surface); border: 1.5px solid var(--accent);
+    border-radius: 10px; padding: 20px; display: none;
+  }
+  .detail-panel.open { display: block; }
+  .detail-panel-header { display: flex; align-items: center; margin-bottom: 16px; }
+  .detail-panel-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .detail-close { cursor: pointer; color: var(--text-sub); font-size: 20px; line-height: 1; padding: 0 4px; }
+  .detail-close:hover { color: var(--text); }
+  .detail-section { margin-bottom: 18px; }
+  .detail-section-title {
+    font-size: 11px; font-weight: 600; color: var(--text-sub);
+    text-transform: uppercase; letter-spacing: .5px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px;
+  }
+  .detail-pct-block { margin-bottom: 12px; }
+  .detail-pct-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; color: #fff;
+    background: var(--accent); padding: 2px 10px; border-radius: 4px; margin-bottom: 6px;
+  }
+  .detail-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: var(--surface2); border-radius: 6px; margin-bottom: 4px;
+    font-size: 12px; flex-wrap: wrap;
+  }
+  .di-code { font-family: monospace; font-size: 10px; color: var(--accent); flex-shrink: 0; }
+  .di-name { flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .di-amount { font-weight: 600; white-space: nowrap; }
+  .di-tags { display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
+  .dtag { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+  .dtag-won    { background: #0f2d1a; color: var(--up); }
+  .dtag-lost   { background: #2d0f0f; color: var(--down); }
+  .dtag-new    { background: #1d3a6e; color: var(--new); }
+  .dtag-change { background: #2a1d4a; color: #a78bfa; }
+  .dtag-year   { background: #102030; color: #60a5fa; }
+  .dtag-minor  { background: var(--surface2); color: var(--neutral); }
+
+  .rev-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rev-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .rev-table tr:last-child td { font-weight: 700; border-bottom: none; }
+  .rev-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 
   @media (max-width: 900px) {
     main { padding: 20px; }
     header { padding: 20px 20px 0; }
     .upload-grid { grid-template-columns: 1fr; }
     .summary-row { grid-template-columns: repeat(2, 1fr); }
+    .report-section-meta { display: none; }
   }
 </style>
 </head>
@@ -155,8 +313,11 @@
     </div>
   </div>
   <div class="tab-row">
-    <div class="tab active" onclick="switchTab('inventory')">인벤토리 비교</div>
-    <div class="tab" onclick="switchTab('sales')">매출 비교</div>
+    <div class="tab active" data-tab="inventory" onclick="switchTab('inventory')">인벤토리 비교</div>
+    <div class="tab" data-tab="sales" onclick="switchTab('sales')">매출 비교</div>
+    <div class="tab" data-tab="report" onclick="switchTab('report')">변동보고서</div>
+    <div class="tab" data-tab="pipeline-trend" onclick="switchTab('pipeline-trend')">파이프라인 추이</div>
+    <div class="tab" data-tab="revenue-trend" onclick="switchTab('revenue-trend')">매출 추이</div>
   </div>
 </header>
 
@@ -196,12 +357,128 @@
     <div id="sal-result"></div>
   </div>
 
+  <!-- Report tab -->
+  <div id="tab-report" class="tab-content">
+    <div class="report-toolbar">
+      <button class="btn btn-primary" onclick="generateReport()">보고서 생성 / 새로고침</button>
+      <span class="status-msg">인벤토리 탭에서 분석 완료된 구간(90% · 75% · 50%)을 기준으로 보고서를 생성합니다.</span>
+    </div>
+    <div id="report-content">
+      <div class="empty-state">
+        <div class="e-icon">📋</div>
+        <p>인벤토리 탭에서 90% · 75% · 50% 구간을 분석한 후 보고서를 생성하세요.</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Pipeline trend tab -->
+  <div id="tab-pipeline-trend" class="tab-content">
+    <div class="trend-layout">
+
+      <div class="trend-input-section">
+        <div class="trend-input-header">
+          <span class="trend-input-title">주차별 파이프라인 데이터 입력</span>
+          <button class="trend-toggle-btn" onclick="togglePipelineInput()">접기 / 펼치기</button>
+        </div>
+        <div id="pipeline-input-body">
+          <div class="json-hint">
+            JSON 배열. 필드: <code>week</code>(YYMMDD) · <code>p100</code>/<code>p90</code>/<code>p75</code>/<code>p50</code>(백만원)
+            · <code>new</code>/<code>won</code>/<code>lost</code>: <code>{"count":N,"amount":M}</code>
+          </div>
+          <textarea class="json-textarea" id="pipeline-json"
+            placeholder='[{"week":"260106","p100":5000,"p90":8000,"p75":12000,"p50":3000,"new":{"count":2,"amount":1500},"won":{"count":1,"amount":800},"lost":{"count":0,"amount":0}}]'></textarea>
+          <div class="btn-row" style="margin-bottom:0">
+            <button class="btn btn-primary" onclick="savePipelineData()">저장 및 차트 갱신</button>
+            <button class="btn btn-secondary" onclick="clearPipelineData()">초기화</button>
+            <span class="status-msg" id="pipeline-data-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title">수주확도 구간별 파이프라인 잔액 추이 (백만원)</div>
+        <div class="chart-legend">
+          <div class="legend-item"><span class="legend-line" style="background:#f97316"></span>100%</div>
+          <div class="legend-item"><span class="legend-line" style="background:#4f6ef7"></span>90%</div>
+          <div class="legend-item"><span class="legend-line" style="background:#22c55e"></span>75%</div>
+          <div class="legend-item"><span class="legend-line" style="background:#f59e0b"></span>50%(F)</div>
+        </div>
+        <div class="chart-wrap"><canvas id="pipeline-canvas"></canvas></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Revenue trend tab -->
+  <div id="tab-revenue-trend" class="tab-content">
+    <div class="trend-layout">
+
+      <div class="trend-input-section">
+        <div class="trend-input-header">
+          <span class="trend-input-title">주차별 매출 데이터 입력</span>
+          <button class="trend-toggle-btn" onclick="toggleRevenueInput()">접기 / 펼치기</button>
+        </div>
+        <div id="revenue-input-body">
+          <div class="json-hint">
+            JSON 배열. 필드: <code>week</code>(YYMMDD) · <code>cumulative</code>(누적실적 백만원)
+            · <code>pipeline</code>: <code>{"100":[{"opCode":"","name":"","amount":0,"tags":["신규"]}],"90":[],"75":[],"50":[]}</code>
+            · <code>revenue</code>: <code>{"product":0,"goods":0,"service":0,"maintenance":0}</code>
+          </div>
+          <textarea class="json-textarea" id="revenue-json"
+            placeholder='[{"week":"260106","cumulative":1200,"pipeline":{"100":[{"opCode":"OP-001","name":"사업명","amount":500,"tags":["신규"]}],"90":[],"75":[],"50":[]},"revenue":{"product":300,"goods":200,"service":500,"maintenance":200}}]'></textarea>
+          <div class="btn-row" style="margin-bottom:0">
+            <button class="btn btn-primary" onclick="saveRevenueData()">저장 및 차트 갱신</button>
+            <button class="btn btn-secondary" onclick="clearRevenueData()">초기화</button>
+            <span class="status-msg" id="revenue-data-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="slider-section">
+        <span class="slider-label">표시 구간 시작:</span>
+        <input type="range" class="range-slider" id="rev-start-sl" min="0" max="51" value="0" oninput="updateRevenueRange()">
+        <span class="slider-val" id="rev-start-val">260106</span>
+        <span class="slider-label">&nbsp;~ 끝:</span>
+        <input type="range" class="range-slider" id="rev-end-sl" min="0" max="51" value="51" oninput="updateRevenueRange()">
+        <span class="slider-val" id="rev-end-val">261229</span>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-card-title">분기 목표 vs 누적 실적 — 주차 포인트 클릭 시 상세 표시</div>
+        <div class="chart-legend">
+          <div class="legend-item"><span class="legend-line" style="background:#ef4444"></span>분기 목표 (누적)</div>
+          <div class="legend-item"><span class="legend-line-dash" style="border-color:#22c55e"></span>누적 실적</div>
+        </div>
+        <div class="chart-wrap"><canvas id="revenue-canvas"></canvas></div>
+      </div>
+
+      <div class="detail-panel" id="rev-detail-panel">
+        <div class="detail-panel-header">
+          <span class="detail-panel-title" id="rev-detail-week">주차 상세</span>
+          <span class="detail-close" onclick="closeRevDetail()">✕</span>
+        </div>
+        <div id="rev-detail-body"></div>
+      </div>
+
+    </div>
+  </div>
+
 </main>
 
 <script>
-// ─── Data store ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const INV_TYPES = ['100', '90', '75', '50'];
+const INV_TYPES    = ['100', '90', '75', '50'];
+const REPORT_TYPES = ['90', '75', '50'];
+
+const CAT_DEFS = [
+  { name: '제품',    re: /^제품$|제품\s*합계|제품\s*금액/i },
+  { name: '상품',    re: /^상품$|상품\s*합계|상품\s*금액/i },
+  { name: '용역',    re: /^용역$|용역\s*합계|용역\s*금액/i },
+  { name: '유지관리', re: /유지\s*관리|유지\s*보수/i },
+];
+
 const DATA = { sal: {} };
 INV_TYPES.forEach(p => { DATA['inv' + p] = {}; });
 
@@ -209,34 +486,33 @@ INV_TYPES.forEach(p => { DATA['inv' + p] = {}; });
 
 window.addEventListener('DOMContentLoaded', () => {
   buildInventorySections();
-  // Setup drag & drop + click for all cards
   INV_TYPES.forEach(p => {
     setupCard('inv' + p, 'prev');
     setupCard('inv' + p, 'curr');
   });
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
+  document.getElementById('rev-start-val').textContent = ALL_WEEKS[0];
+  document.getElementById('rev-end-val').textContent   = ALL_WEEKS[51];
 });
 
 function buildInventorySections() {
-  const subtabRow = document.getElementById('inv-subtab-row');
+  const subtabRow   = document.getElementById('inv-subtab-row');
   const sectionsDiv = document.getElementById('inv-sections');
 
   INV_TYPES.forEach((pct, i) => {
-    const typeId = 'inv' + pct;
+    const typeId  = 'inv' + pct;
     const isFirst = i === 0;
 
-    // Sub-tab button
     const tab = document.createElement('div');
-    tab.id = 'inv-subtab-' + pct;
+    tab.id        = 'inv-subtab-' + pct;
     tab.className = 'inv-subtab' + (isFirst ? ' active' : '');
     tab.textContent = pct + '%';
     tab.onclick = () => switchInvTab(pct);
     subtabRow.appendChild(tab);
 
-    // Section HTML
     const section = document.createElement('div');
-    section.id = 'inv-sub-' + pct;
+    section.id        = 'inv-sub-' + pct;
     section.className = 'inv-sub' + (isFirst ? ' active' : '');
     section.innerHTML = `
       <div class="upload-grid">
@@ -267,28 +543,21 @@ function buildInventorySections() {
   });
 }
 
-// ─── Upload card setup (click + drag & drop) ─────────────────────────────────
+// ─── Upload card: click + drag & drop ────────────────────────────────────────
 
 function setupCard(type, week) {
-  const card = document.getElementById(`${type}-${week}-card`);
+  const card  = document.getElementById(`${type}-${week}-card`);
   const input = document.getElementById(`${type}-${week}-input`);
   if (!card || !input) return;
 
   card.addEventListener('click', () => input.click());
-
   input.addEventListener('change', e => {
     const file = e.target.files[0];
     if (file) processFile(file, type, week);
-    e.target.value = ''; // allow re-selecting same file
+    e.target.value = '';
   });
-
-  card.addEventListener('dragover', e => {
-    e.preventDefault();
-    card.classList.add('drag-over');
-  });
-  card.addEventListener('dragleave', e => {
-    if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over');
-  });
+  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); });
   card.addEventListener('drop', e => {
     e.preventDefault();
     card.classList.remove('drag-over');
@@ -296,8 +565,6 @@ function setupCard(type, week) {
     if (file) processFile(file, type, week);
   });
 }
-
-// ─── File processing ──────────────────────────────────────────────────────────
 
 function processFile(file, type, week) {
   if (!file.name.match(/\.(xlsx|xls)$/i)) {
@@ -309,8 +576,7 @@ function processFile(file, type, week) {
     const wb = XLSX.read(ev.target.result, { type: 'binary' });
     let rows = [];
     for (const sname of wb.SheetNames) {
-      const ws = wb.Sheets[sname];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[sname], { defval: '' });
       if (raw.length > 2) { rows = raw; break; }
     }
     DATA[type][week] = rows;
@@ -323,8 +589,7 @@ function processFile(file, type, week) {
 }
 
 function checkReady(type) {
-  const ready = DATA[type].prev && DATA[type].curr;
-  document.getElementById(`${type}-compare-btn`).disabled = !ready;
+  document.getElementById(`${type}-compare-btn`).disabled = !(DATA[type].prev && DATA[type].curr);
 }
 
 function resetAll(type) {
@@ -337,15 +602,21 @@ function resetAll(type) {
   document.getElementById(`${type}-compare-btn`).disabled = true;
   document.getElementById(`${type}-result`).innerHTML = '';
   document.getElementById(`${type}-status`).textContent = '';
+  delete window[`_changes_${type}`];
+  delete window[`_cfg_${type}`];
+  delete window[`_fmt_${type}`];
 }
 
 // ─── Tab switch ───────────────────────────────────────────────────────────────
 
 function switchTab(t) {
-  document.querySelectorAll('.tab').forEach((el, i) =>
-    el.classList.toggle('active', ['inventory', 'sales'][i] === t));
+  document.querySelectorAll('.tab[data-tab]').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === t));
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + t).classList.add('active');
+  if (t === 'report') generateReport();
+  if (t === 'pipeline-trend') renderPipelineChart();
+  if (t === 'revenue-trend')  renderRevenueChart();
 }
 
 function switchInvTab(pct) {
@@ -359,25 +630,38 @@ function switchInvTab(pct) {
 
 function detectConfig(type, rows) {
   if (!rows || rows.length === 0) return null;
-  const keys = Object.keys(rows[0]);
+  const keys  = Object.keys(rows[0]);
   const isInv = type.startsWith('inv');
 
+  // Detect category columns (제품/상품/용역/유지관리)
+  const catKeys = {};
   if (isInv) {
-    const codeKey  = keys.find(k => /프로젝트.?코드|프로젝트코드/i.test(k)) || '프로젝트코드';
-    const nameKey  = keys.find(k => /프로젝트명/i.test(k)) || keys[3];
-    const amtKey   = keys.find(k => /총.?합계|총합계/i.test(k)) || keys[keys.length - 1];
-    const custKey  = keys.find(k => /고객사/i.test(k)) || keys[1];
-    const salesKey = keys.find(k => /영업담당|영업대표/i.test(k)) || '';
-    const statusKey= keys.find(k => /수주.?확도|수주확도/i.test(k)) || '';
-    return { idKey: codeKey, nameKey, amtKey, custKey, salesKey, statusKey };
+    CAT_DEFS.forEach(def => {
+      const col = keys.find(k => def.re.test(k));
+      if (col) catKeys[def.name] = col;
+    });
+  }
+
+  if (isInv) {
+    return {
+      idKey:    keys.find(k => /프로젝트.?코드/i.test(k))    || '프로젝트코드',
+      nameKey:  keys.find(k => /프로젝트명/i.test(k))         || keys[3],
+      amtKey:   keys.find(k => /총.?합계/i.test(k))           || keys[keys.length - 1],
+      custKey:  keys.find(k => /고객사/i.test(k))             || keys[1],
+      salesKey: keys.find(k => /영업담당|영업대표/i.test(k))  || '',
+      statusKey:keys.find(k => /수주.?확도/i.test(k))         || '',
+      catKeys,
+    };
   } else {
-    const idKey    = keys.find(k => /매출.?번호/i.test(k)) || keys[6];
-    const nameKey  = keys.find(k => /프로젝트명|수주계약명/i.test(k)) || keys[4];
-    const amtKey   = keys.find(k => /^합계$|합계$/i.test(k)) || keys.find(k => /합계/i.test(k));
-    const custKey  = keys.find(k => /고객사명/i.test(k)) || keys[5];
-    const salesKey = keys.find(k => /영업대표/i.test(k)) || '';
-    const statusKey= keys.find(k => /^상태$|매출상태/i.test(k)) || '';
-    return { idKey, nameKey, amtKey, custKey, salesKey, statusKey };
+    return {
+      idKey:    keys.find(k => /매출.?번호/i.test(k))         || keys[6],
+      nameKey:  keys.find(k => /프로젝트명|수주계약명/i.test(k)) || keys[4],
+      amtKey:   keys.find(k => /^합계$|합계$/i.test(k))       || keys.find(k => /합계/i.test(k)),
+      custKey:  keys.find(k => /고객사명/i.test(k))           || keys[5],
+      salesKey: keys.find(k => /영업대표/i.test(k))           || '',
+      statusKey:keys.find(k => /^상태$|매출상태/i.test(k))    || '',
+      catKeys: {},
+    };
   }
 }
 
@@ -392,40 +676,48 @@ function toNum(v) {
 function runCompare(type) {
   const prev = DATA[type].prev;
   const curr = DATA[type].curr;
-  const cfg = detectConfig(type, [...prev, ...curr]);
+  const cfg  = detectConfig(type, [...prev, ...curr]);
   if (!cfg) {
     document.getElementById(`${type}-status`).textContent = '컬럼 구조를 인식할 수 없습니다.';
     return;
   }
 
-  const prevMap = {};
+  const prevMap = {}, currMap = {};
   prev.forEach(r => { const id = String(r[cfg.idKey] || '').trim(); if (id) prevMap[id] = r; });
-  const currMap = {};
   curr.forEach(r => { const id = String(r[cfg.idKey] || '').trim(); if (id) currMap[id] = r; });
 
-  const allIds = new Set([...Object.keys(prevMap), ...Object.keys(currMap)]);
+  const allIds  = new Set([...Object.keys(prevMap), ...Object.keys(currMap)]);
   const changes = [];
 
   allIds.forEach(id => {
-    const p = prevMap[id], c = currMap[id];
+    const p    = prevMap[id];
+    const c    = currMap[id];
     const pAmt = p ? toNum(p[cfg.amtKey]) : 0;
     const cAmt = c ? toNum(c[cfg.amtKey]) : 0;
     const diff = cAmt - pAmt;
 
     let changeType;
-    if (!p && c)           changeType = 'new';
-    else if (p && !c)      changeType = 'del';
+    if (!p && c)                changeType = 'new';
+    else if (p && !c)           changeType = 'del';
     else if (Math.abs(diff) > 0.01) changeType = diff > 0 ? 'up' : 'down';
-    else                   changeType = 'same';
+    else                        changeType = 'same';
+
+    // Per-category diffs
+    const cats = {};
+    for (const [catName, catKey] of Object.entries(cfg.catKeys)) {
+      const pVal = p ? toNum(p[catKey]) : 0;
+      const cVal = c ? toNum(c[catKey]) : 0;
+      cats[catName] = { prev: pVal, curr: cVal, diff: cVal - pVal };
+    }
 
     const row = c || p;
     changes.push({
       id,
-      name: String(row[cfg.nameKey] || '').replace(/\(.*?\)/g, '').trim().slice(0, 60),
-      cust: String(row[cfg.custKey] || ''),
-      sales: cfg.salesKey ? String(row[cfg.salesKey] || '') : '',
-      status: cfg.statusKey ? String(row[cfg.statusKey] || '') : '',
-      prevAmt: pAmt, currAmt: cAmt, diff, changeType,
+      name:       String(row[cfg.nameKey] || '').replace(/\(.*?\)/g, '').trim().slice(0, 60),
+      cust:       String(row[cfg.custKey] || ''),
+      sales:      cfg.salesKey  ? String(row[cfg.salesKey]  || '') : '',
+      status:     cfg.statusKey ? String(row[cfg.statusKey] || '') : '',
+      prevAmt: pAmt, currAmt: cAmt, diff, changeType, cats,
     });
   });
 
@@ -438,52 +730,31 @@ function runCompare(type) {
   renderResult(type, changes, cfg);
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Render (table view per type) ────────────────────────────────────────────
 
 function renderResult(type, changes, cfg) {
   const isInv = type.startsWith('inv');
-  const unit = isInv ? '백만원' : '원';
-  const fmt = isInv
+  const unit  = isInv ? '백만원' : '원';
+  const fmt   = isInv
     ? v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(2) + '십억' : v.toFixed(2) + '백만'
     : v => Math.abs(v) >= 100000000 ? (v / 100000000).toFixed(1) + '억' : (v / 1000000).toFixed(1) + '백만';
 
-  const byType = { new: [], del: [], up: [], down: [], same: [] };
+  const byType    = { new: [], del: [], up: [], down: [], same: [] };
   changes.forEach(c => byType[c.changeType].push(c));
-
   const totalDiff = changes.reduce((s, c) => s + c.diff, 0);
 
   const summaryHtml = `
   <div class="summary-row">
-    <div class="summary-card c-new">
-      <div class="s-label">신규 등록</div>
-      <div class="s-value">${byType.new.length}</div>
-      <div class="s-sub">+ ${fmt(byType.new.reduce((s, c) => s + c.currAmt, 0))} ${unit}</div>
-    </div>
-    <div class="summary-card c-del">
-      <div class="s-label">삭제 / 종결</div>
-      <div class="s-value">${byType.del.length}</div>
-      <div class="s-sub">- ${fmt(byType.del.reduce((s, c) => s + c.prevAmt, 0))} ${unit}</div>
-    </div>
-    <div class="summary-card c-up">
-      <div class="s-label">금액 증가</div>
-      <div class="s-value">${byType.up.length}</div>
-      <div class="s-sub">+ ${fmt(byType.up.reduce((s, c) => s + c.diff, 0))} ${unit}</div>
-    </div>
-    <div class="summary-card c-down">
-      <div class="s-label">금액 감소</div>
-      <div class="s-value">${byType.down.length}</div>
-      <div class="s-sub">- ${fmt(Math.abs(byType.down.reduce((s, c) => s + c.diff, 0)))} ${unit}</div>
-    </div>
-    <div class="summary-card c-total">
-      <div class="s-label">순 변동합계</div>
-      <div class="s-value" style="color:${totalDiff >= 0 ? 'var(--up)' : 'var(--down)'}">${totalDiff >= 0 ? '+' : ''}${fmt(totalDiff)}</div>
-      <div class="s-sub">${unit} | 변동항목 ${changes.filter(c => c.changeType !== 'same').length}건</div>
-    </div>
+    <div class="summary-card c-new"><div class="s-label">신규 등록</div><div class="s-value">${byType.new.length}</div><div class="s-sub">+ ${fmt(byType.new.reduce((s,c)=>s+c.currAmt,0))} ${unit}</div></div>
+    <div class="summary-card c-del"><div class="s-label">삭제 / 종결</div><div class="s-value">${byType.del.length}</div><div class="s-sub">- ${fmt(byType.del.reduce((s,c)=>s+c.prevAmt,0))} ${unit}</div></div>
+    <div class="summary-card c-up"><div class="s-label">금액 증가</div><div class="s-value">${byType.up.length}</div><div class="s-sub">+ ${fmt(byType.up.reduce((s,c)=>s+c.diff,0))} ${unit}</div></div>
+    <div class="summary-card c-down"><div class="s-label">금액 감소</div><div class="s-value">${byType.down.length}</div><div class="s-sub">- ${fmt(Math.abs(byType.down.reduce((s,c)=>s+c.diff,0)))} ${unit}</div></div>
+    <div class="summary-card c-total"><div class="s-label">순 변동합계</div><div class="s-value" style="color:${totalDiff>=0?'var(--up)':'var(--down)'}">${totalDiff>=0?'+':''}${fmt(totalDiff)}</div><div class="s-sub">${unit} | 변동항목 ${changes.filter(c=>c.changeType!=='same').length}건</div></div>
   </div>`;
 
-  const badgeMap = { new: 'badge-new', del: 'badge-del', up: 'badge-up', down: 'badge-down', same: 'badge-same' };
-  const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', same: '유지' };
-  const rowClass = { new: 'row-new', del: 'row-del', up: 'row-up', down: 'row-down', same: '' };
+  const badgeMap = { new:'badge-new', del:'badge-del', up:'badge-up', down:'badge-down', same:'badge-same' };
+  const labelMap = { new:'신규', del:'삭제', up:'증가', down:'감소', same:'유지' };
+  const rowClass = { new:'row-new', del:'row-del', up:'row-up', down:'row-down', same:'' };
 
   function buildTable(filter, search) {
     const q = search.toLowerCase();
@@ -492,21 +763,19 @@ function renderResult(type, changes, cfg) {
       if (q && !c.name.toLowerCase().includes(q) && !c.cust.toLowerCase().includes(q) && !c.id.toLowerCase().includes(q)) return false;
       return true;
     });
-
     if (filtered.length === 0) return `<div class="empty-state"><div class="e-icon">🔍</div><p>해당 조건의 항목이 없습니다.</p></div>`;
 
     const rows = filtered.map(c => {
       const diffStr = c.changeType === 'new' ? `<span class="diff-up">신규 ${fmt(c.currAmt)}</span>`
         : c.changeType === 'del' ? `<span class="diff-down">삭제 ${fmt(c.prevAmt)}</span>`
         : c.diff === 0 ? `<span class="diff-zero">변동 없음</span>`
-        : `<span class="${c.diff > 0 ? 'diff-up' : 'diff-down'}">${c.diff > 0 ? '+' : ''}${fmt(c.diff)}</span>`;
-
+        : `<span class="${c.diff>0?'diff-up':'diff-down'}">${c.diff>0?'+':''}${fmt(c.diff)}</span>`;
       return `<tr class="${rowClass[c.changeType]}">
         <td><span class="badge ${badgeMap[c.changeType]}">${labelMap[c.changeType]}</span></td>
         <td class="code">${escHtml(c.id)}</td>
         <td><div class="proj-name" title="${escHtml(c.name)}">${escHtml(c.name)}</div></td>
         <td>${escHtml(c.cust)}</td>
-        ${cfg.salesKey ? `<td>${escHtml(c.sales)}</td>` : ''}
+        ${cfg.salesKey  ? `<td>${escHtml(c.sales)}</td>` : ''}
         <td class="amount">${c.prevAmt ? fmt(c.prevAmt) : '-'}</td>
         <td class="amount">${c.currAmt ? fmt(c.currAmt) : '-'}</td>
         <td class="amount">${diffStr}</td>
@@ -517,9 +786,9 @@ function renderResult(type, changes, cfg) {
     return `<div class="table-wrap"><table>
       <thead><tr>
         <th>구분</th><th>코드</th><th>프로젝트명</th><th>고객사</th>
-        ${cfg.salesKey ? '<th>영업담당</th>' : ''}
+        ${cfg.salesKey  ? '<th>영업담당</th>' : ''}
         <th>전주 (${unit})</th><th>금주 (${unit})</th><th>변동</th>
-        ${cfg.statusKey ? `<th>${isInv ? '수주확도' : '상태'}</th>` : ''}
+        ${cfg.statusKey ? `<th>${isInv?'수주확도':'상태'}</th>` : ''}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -540,9 +809,9 @@ function renderResult(type, changes, cfg) {
   document.getElementById(`${type}-result`).innerHTML =
     summaryHtml + filterBar + `<div id="${type}-table-area">${buildTable('all', '')}</div>`;
 
-  window[`_changes_${type}`] = changes;
-  window[`_cfg_${type}`] = cfg;
-  window[`_fmt_${type}`] = fmt;
+  window[`_changes_${type}`]    = changes;
+  window[`_cfg_${type}`]        = cfg;
+  window[`_fmt_${type}`]        = fmt;
   window[`_buildTable_${type}`] = buildTable;
 }
 
@@ -561,24 +830,477 @@ function applySearch(type) {
 }
 
 function exportCsv(type) {
-  const changes = window[`_changes_${type}`];
-  const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', same: '유지' };
-  const header = ['구분', '코드', '프로젝트명', '고객사', '영업담당', '전주금액', '금주금액', '변동금액', '상태'].join(',');
-  const rows = changes.map(c => [
+  const changes  = window[`_changes_${type}`];
+  const labelMap = { new:'신규', del:'삭제', up:'증가', down:'감소', same:'유지' };
+  const header   = ['구분','코드','프로젝트명','고객사','영업담당','전주금액','금주금액','변동금액','상태'].join(',');
+  const rows     = changes.map(c => [
     labelMap[c.changeType], c.id,
-    `"${c.name.replace(/"/g, '""')}"`,
-    `"${c.cust.replace(/"/g, '""')}"`,
-    c.sales, c.prevAmt, c.currAmt, c.diff, c.status
+    `"${c.name.replace(/"/g,'""')}"`, `"${c.cust.replace(/"/g,'""')}"`,
+    c.sales, c.prevAmt, c.currAmt, c.diff, c.status,
   ].join(','));
   const blob = new Blob(['﻿' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `변동이력_${new Date().toISOString().slice(0, 10)}.csv`;
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `변동이력_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
 
+// ─── 변동보고서 ───────────────────────────────────────────────────────────────
+
+function generateReport() {
+  const anyData = REPORT_TYPES.some(p => window[`_changes_inv${p}`]);
+  if (!anyData) return; // keep the empty state
+
+  const html = REPORT_TYPES.map(pct => buildReportSection(pct)).join('');
+  document.getElementById('report-content').innerHTML = html;
+}
+
+function buildReportSection(pct) {
+  const type    = 'inv' + pct;
+  const changes = window[`_changes_${type}`];
+
+  if (!changes) {
+    return `
+      <div class="report-section">
+        <div class="report-section-header">
+          <span class="report-pct-badge">${pct}%</span>
+          <span class="report-section-title">수주확도 ${pct}% 구간</span>
+          <span class="report-section-meta" style="color:#555c7a">미분석 — 인벤토리 탭에서 파일을 업로드하고 분석해주세요</span>
+        </div>
+      </div>`;
+  }
+
+  const cfg = window[`_cfg_${type}`];
+  const fmt = window[`_fmt_${type}`];
+
+  const byType = { new: [], del: [], up: [], down: [] };
+  changes.forEach(c => { if (c.changeType !== 'same') byType[c.changeType].push(c); });
+
+  const totalUp   = byType.up.reduce((s, c) => s + c.diff, 0);
+  const totalDown = byType.down.reduce((s, c) => s + c.diff, 0);
+  const totalNew  = byType.new.reduce((s, c) => s + c.currAmt, 0);
+  const totalDel  = byType.del.reduce((s, c) => s + c.prevAmt, 0);
+  const totalDiff = changes.reduce((s, c) => s + c.diff, 0);
+
+  const metaLines = [
+    `신규 <b>${byType.new.length}</b>건 · 삭제 <b>${byType.del.length}</b>건`,
+    `증가 <b>${byType.up.length}</b>건 · 감소 <b>${byType.down.length}</b>건`,
+    `순변동 <b style="color:${totalDiff>=0?'var(--up)':'var(--down)'}">${totalDiff>=0?'+':''}${fmt(totalDiff)}백만</b>`,
+  ].join(' &nbsp;|&nbsp; ');
+
+  const groups = [
+    { key:'new',  cls:'rg-new',  icon:'●', label:'신규 등록 사업', meta:`${byType.new.length}건 · +${fmt(totalNew)}백만` },
+    { key:'del',  cls:'rg-del',  icon:'●', label:'삭제 / 종결 사업', meta:`${byType.del.length}건 · -${fmt(totalDel)}백만` },
+    { key:'up',   cls:'rg-up',   icon:'▲', label:'금액 증가 사업', meta:`${byType.up.length}건 · +${fmt(totalUp)}백만` },
+    { key:'down', cls:'rg-down', icon:'▼', label:'금액 감소 사업', meta:`${byType.down.length}건 · ${fmt(totalDown)}백만` },
+  ];
+
+  const groupsHtml = groups
+    .filter(g => byType[g.key].length > 0)
+    .map(g => {
+      const cards = byType[g.key].map(c => buildProjectCard(c, cfg, fmt, g.key)).join('');
+      return `
+        <div class="report-group">
+          <div class="report-group-title ${g.cls}">
+            <span>${g.icon}</span>
+            <span>${g.label}</span>
+            <span class="rg-meta">(${g.meta})</span>
+          </div>
+          <div class="project-cards">${cards}</div>
+        </div>`;
+    }).join('');
+
+  return `
+    <div class="report-section">
+      <div class="report-section-header">
+        <span class="report-pct-badge">${pct}%</span>
+        <span class="report-section-title">수주확도 ${pct}% 구간</span>
+        <span class="report-section-meta">${metaLines}</span>
+      </div>
+      <div class="report-body">
+        ${groupsHtml || '<p style="color:var(--text-sub);padding:16px;text-align:center">변동 항목이 없습니다.</p>'}
+      </div>
+    </div>`;
+}
+
+function buildProjectCard(c, cfg, fmt, changeType) {
+  const salesInfo = c.sales ? ` &nbsp;·&nbsp; ${escHtml(c.sales)}` : '';
+
+  // Category rows — only entries with any amount
+  const catEntries = Object.entries(c.cats || {})
+    .filter(([, v]) => Math.abs(v.prev) > 0.01 || Math.abs(v.curr) > 0.01);
+
+  const catRows = catEntries.map(([name, v]) => {
+    const prevStr = (changeType === 'new' || Math.abs(v.prev) < 0.01) ? '-' : fmt(v.prev);
+    const currStr = (changeType === 'del' || Math.abs(v.curr) < 0.01) ? '-' : fmt(v.curr);
+    let diffStr, diffCls;
+    if (changeType === 'new') {
+      diffStr = '+' + fmt(v.curr); diffCls = 'diff-up';
+    } else if (changeType === 'del') {
+      diffStr = '-' + fmt(v.prev); diffCls = 'diff-down';
+    } else {
+      diffCls = v.diff > 0.01 ? 'diff-up' : v.diff < -0.01 ? 'diff-down' : 'diff-zero';
+      diffStr = v.diff > 0.01 ? '+' + fmt(v.diff) : v.diff < -0.01 ? fmt(v.diff) : '-';
+    }
+    return `<tr>
+      <td>${escHtml(name)}</td>
+      <td>${prevStr}</td>
+      <td>${currStr}</td>
+      <td class="${diffCls}">${diffStr}</td>
+    </tr>`;
+  }).join('');
+
+  // Total row
+  const totalPrev = changeType === 'new' ? '-' : fmt(c.prevAmt);
+  const totalCurr = changeType === 'del' ? '-' : fmt(c.currAmt);
+  let totalDiffStr, totalDiffCls;
+  if (changeType === 'new') {
+    totalDiffStr = '+' + fmt(c.currAmt); totalDiffCls = 'diff-up';
+  } else if (changeType === 'del') {
+    totalDiffStr = '-' + fmt(c.prevAmt); totalDiffCls = 'diff-down';
+  } else {
+    totalDiffCls = c.diff > 0 ? 'diff-up' : 'diff-down';
+    totalDiffStr = (c.diff > 0 ? '+' : '') + fmt(c.diff);
+  }
+
+  const tableHtml = `
+    <table class="cat-table">
+      <thead><tr><th>항목</th><th>전주</th><th>금주</th><th>변동</th></tr></thead>
+      <tbody>
+        ${catRows}
+        <tr class="total-row">
+          <td>합계</td>
+          <td>${totalPrev}</td>
+          <td>${totalCurr}</td>
+          <td class="${totalDiffCls}">${totalDiffStr}</td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  return `
+    <div class="project-card">
+      <div class="pc-header">
+        <span class="pc-code">${escHtml(c.id)}</span>
+        <span class="pc-name">${escHtml(c.name)}</span>
+        <span class="pc-cust">${escHtml(c.cust)}${salesInfo}</span>
+      </div>
+      ${tableHtml}
+    </div>`;
+}
+
+// ─── Util ─────────────────────────────────────────────────────────────────────
+
 function escHtml(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── 파이프라인 / 매출 추이 공통 ──────────────────────────────────────────────
+
+// 260106(Jan 6) ~ 261229(Dec 29) 52주 라벨 생성
+const ALL_WEEKS = (() => {
+  const weeks = [];
+  const d = new Date(2026, 0, 6);
+  while (weeks.length < 52) {
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    weeks.push(yy + mm + dd);
+    d.setDate(d.getDate() + 7);
+  }
+  return weeks;
+})();
+
+// 분기 목표 누적 선형 보간 (백만원)
+// Q1: 5,253 / Q2: 14,178 / Q3: 30,101 / Q4: 82,068
+function getTargetForWeek(weekStr) {
+  const y  = 2000 + parseInt(weekStr.slice(0, 2));
+  const m  = parseInt(weekStr.slice(2, 4));
+  const dd = parseInt(weekStr.slice(4, 6));
+  const w  = new Date(y, m - 1, dd);
+  const pts = [
+    [new Date(2026,  0,  1),     0],
+    [new Date(2026,  2, 31),  5253],
+    [new Date(2026,  5, 30), 14178],
+    [new Date(2026,  8, 30), 30101],
+    [new Date(2026, 11, 31), 82068],
+  ];
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (w >= pts[i][0] && w <= pts[i + 1][0]) {
+      const t = (w - pts[i][0]) / (pts[i + 1][0] - pts[i][0]);
+      return Math.round(pts[i][1] + t * (pts[i + 1][1] - pts[i][1]));
+    }
+  }
+  return 82068;
+}
+
+let pipelineChart = null;
+let revenueChart  = null;
+
+// ─── 파이프라인 추이 ──────────────────────────────────────────────────────────
+
+function loadPipelineData() {
+  try { return JSON.parse(localStorage.getItem('pipeline_weekly_data') || '[]'); }
+  catch (e) { return []; }
+}
+
+function savePipelineData() {
+  const val = document.getElementById('pipeline-json').value.trim();
+  const msg = document.getElementById('pipeline-data-msg');
+  if (!val) { msg.textContent = '데이터를 입력해주세요.'; return; }
+  try {
+    const arr = JSON.parse(val);
+    if (!Array.isArray(arr)) throw new Error('배열 형식이어야 합니다');
+    localStorage.setItem('pipeline_weekly_data', JSON.stringify(arr));
+    msg.textContent = '✓ ' + arr.length + '건 저장됨';
+    renderPipelineChart();
+  } catch (e) { msg.textContent = '오류: ' + e.message; }
+}
+
+function clearPipelineData() {
+  localStorage.removeItem('pipeline_weekly_data');
+  document.getElementById('pipeline-data-msg').textContent = '초기화됨';
+  renderPipelineChart();
+}
+
+function togglePipelineInput() {
+  const el = document.getElementById('pipeline-input-body');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function renderPipelineChart() {
+  const data = loadPipelineData();
+  const wmap = {};
+  data.forEach(d => { wmap[d.week] = d; });
+
+  const mkSeries = key => ALL_WEEKS.map(w => (wmap[w] && wmap[w][key] != null) ? wmap[w][key] : null);
+
+  const ctx = document.getElementById('pipeline-canvas').getContext('2d');
+  if (pipelineChart) pipelineChart.destroy();
+
+  const chartDefaults = {
+    tension: 0.3, pointRadius: 3, pointHoverRadius: 7, spanGaps: false, borderWidth: 2,
+  };
+  pipelineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ALL_WEEKS,
+      datasets: [
+        { label: '100%',    data: mkSeries('p100'), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.08)',  ...chartDefaults },
+        { label: '90%',     data: mkSeries('p90'),  borderColor: '#4f6ef7', backgroundColor: 'rgba(79,110,247,.08)',  ...chartDefaults },
+        { label: '75%',     data: mkSeries('p75'),  borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.08)',   ...chartDefaults },
+        { label: '50%(F)',  data: mkSeries('p50'),  borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.08)',  ...chartDefaults },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          ticks: { color: '#8890b5', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 18 },
+          grid:  { color: '#1e2136' },
+        },
+        y: {
+          ticks: {
+            color: '#8890b5', font: { size: 11 },
+            callback: v => v >= 10000 ? (v / 10000).toFixed(0) + '억M' : v + 'M',
+          },
+          grid:  { color: '#1e2136' },
+          title: { display: true, text: '백만원', color: '#8890b5', font: { size: 11 } },
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: '#8890b5',
+          callbacks: {
+            title: items => '📅 주차: ' + items[0].label,
+            afterBody: items => {
+              const d = wmap[items[0].label];
+              if (!d) return [];
+              const lines = [];
+              if (d.new  && (d.new.count  || d.new.amount))  lines.push('신규  ' + d.new.count  + '건 · ' + d.new.amount  + 'M원');
+              if (d.won  && (d.won.count  || d.won.amount))  lines.push('수주  ' + d.won.count  + '건 · ' + d.won.amount  + 'M원');
+              if (d.lost && (d.lost.count || d.lost.amount)) lines.push('실주  ' + d.lost.count + '건 · ' + d.lost.amount + 'M원');
+              return lines.length ? ['', '── 이번주 변동 ──', ...lines] : [];
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─── 매출 추이 ────────────────────────────────────────────────────────────────
+
+function loadRevenueData() {
+  try { return JSON.parse(localStorage.getItem('revenue_weekly_data') || '[]'); }
+  catch (e) { return []; }
+}
+
+function saveRevenueData() {
+  const val = document.getElementById('revenue-json').value.trim();
+  const msg = document.getElementById('revenue-data-msg');
+  if (!val) { msg.textContent = '데이터를 입력해주세요.'; return; }
+  try {
+    const arr = JSON.parse(val);
+    if (!Array.isArray(arr)) throw new Error('배열 형식이어야 합니다');
+    localStorage.setItem('revenue_weekly_data', JSON.stringify(arr));
+    msg.textContent = '✓ ' + arr.length + '건 저장됨';
+    renderRevenueChart();
+  } catch (e) { msg.textContent = '오류: ' + e.message; }
+}
+
+function clearRevenueData() {
+  localStorage.removeItem('revenue_weekly_data');
+  document.getElementById('revenue-data-msg').textContent = '초기화됨';
+  renderRevenueChart();
+}
+
+function toggleRevenueInput() {
+  const el = document.getElementById('revenue-input-body');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function updateRevenueRange() {
+  let si = parseInt(document.getElementById('rev-start-sl').value);
+  let ei = parseInt(document.getElementById('rev-end-sl').value);
+  document.getElementById('rev-start-val').textContent = ALL_WEEKS[Math.min(si, ei)];
+  document.getElementById('rev-end-val').textContent   = ALL_WEEKS[Math.max(si, ei)];
+  renderRevenueChart();
+}
+
+function renderRevenueChart() {
+  const data = loadRevenueData();
+  const wmap = {};
+  data.forEach(d => { wmap[d.week] = d; });
+
+  let si = parseInt(document.getElementById('rev-start-sl').value);
+  let ei = parseInt(document.getElementById('rev-end-sl').value);
+  if (si > ei) [si, ei] = [ei, si];
+  if (si === ei) ei = Math.min(51, si + 1);
+
+  const labels  = ALL_WEEKS.slice(si, ei + 1);
+  const targets = labels.map(w => getTargetForWeek(w));
+  const actuals = labels.map(w => (wmap[w] && wmap[w].cumulative != null) ? wmap[w].cumulative : null);
+
+  const ctx = document.getElementById('revenue-canvas').getContext('2d');
+  if (revenueChart) revenueChart.destroy();
+
+  revenueChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '분기 목표 (누적)',
+          data: targets,
+          borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.05)',
+          tension: 0.1, pointRadius: 3, pointHoverRadius: 5, fill: false, borderWidth: 2,
+        },
+        {
+          label: '누적 실적',
+          data: actuals,
+          borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.1)',
+          borderDash: [6, 3],
+          tension: 0.2, pointRadius: 5, pointHoverRadius: 9, fill: false, spanGaps: false, borderWidth: 2,
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      onClick: (evt, _els, chart) => {
+        const items = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, false);
+        if (!items.length) return;
+        const week = labels[items[0].index];
+        showRevDetail(week, wmap[week]);
+      },
+      scales: {
+        x: {
+          ticks: { color: '#8890b5', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 18 },
+          grid:  { color: '#1e2136' },
+        },
+        y: {
+          ticks: {
+            color: '#8890b5', font: { size: 11 },
+            callback: v => v >= 10000 ? (v / 10000).toFixed(1) + '억' : v >= 1000 ? (v / 1000).toFixed(0) + '천M' : v + 'M',
+          },
+          grid:  { color: '#1e2136' },
+          title: { display: true, text: '백만원', color: '#8890b5', font: { size: 11 } },
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: '#8890b5',
+          callbacks: { title: items => '📅 주차: ' + items[0].label }
+        }
+      }
+    }
+  });
+}
+
+function showRevDetail(week, d) {
+  const panel = document.getElementById('rev-detail-panel');
+  document.getElementById('rev-detail-week').textContent = '📅 ' + week + ' 주차 상세';
+
+  if (!d) {
+    document.getElementById('rev-detail-body').innerHTML =
+      '<p style="color:var(--text-sub);text-align:center;padding:24px">해당 주차 데이터 없음</p>';
+    panel.classList.add('open');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
+
+  const tagCls = t =>
+    t === '수주'     ? 'dtag-won'  :
+    t === '실주'     ? 'dtag-lost' :
+    t === '신규'     ? 'dtag-new'  :
+    t === '확도변경' ? 'dtag-change' :
+    t === '연도이동' ? 'dtag-year' : 'dtag-minor';
+
+  const pipeHtml = ['100', '90', '75', '50'].map(pct => {
+    const items = ((d.pipeline || {})[pct] || []);
+    if (!items.length) return '';
+    const rows = items.map(it => `
+      <div class="detail-item">
+        <span class="di-code">${escHtml(it.opCode || '')}</span>
+        <span class="di-name">${escHtml(it.name || '')}</span>
+        <span class="di-amount">${it.amount != null ? it.amount + 'M' : '-'}</span>
+        <div class="di-tags">${(it.tags || []).map(t => `<span class="dtag ${tagCls(t)}">${escHtml(t)}</span>`).join('')}</div>
+      </div>`).join('');
+    return `<div class="detail-pct-block"><span class="detail-pct-badge">${pct}%</span>${rows}</div>`;
+  }).join('');
+
+  const rev   = d.revenue || {};
+  const total = (rev.product || 0) + (rev.goods || 0) + (rev.service || 0) + (rev.maintenance || 0);
+  const revHtml = `
+    <table class="rev-table">
+      <tr><td>제품</td><td>${rev.product || 0}M</td></tr>
+      <tr><td>상품</td><td>${rev.goods || 0}M</td></tr>
+      <tr><td>용역</td><td>${rev.service || 0}M</td></tr>
+      <tr><td>유지보수</td><td>${rev.maintenance || 0}M</td></tr>
+      <tr><td>합계</td><td>${total}M</td></tr>
+    </table>`;
+
+  document.getElementById('rev-detail-body').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">사업기회 현황</div>
+      ${pipeHtml || '<p style="color:var(--text-sub);font-size:12px;padding:8px 0">항목 없음</p>'}
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">매출 현황</div>
+      ${revHtml}
+    </div>`;
+
+  panel.classList.add('open');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeRevDetail() {
+  document.getElementById('rev-detail-panel').classList.remove('open');
 }
 </script>
 </body>
