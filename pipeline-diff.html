@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>주간 파이프라인 변동이력</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f6ef7;
+    --accent2: #7c3aed;
+    --text: #e8eaf6;
+    --text-sub: #8890b5;
+    --up: #22c55e;
+    --down: #ef4444;
+    --new: #3b82f6;
+    --del: #f97316;
+    --neutral: #a3a3a3;
+    --font: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+
+  /* Header */
+  header { padding: 32px 40px 0; border-bottom: 1px solid var(--border); }
+  .header-top { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+  .logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  .subtitle { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+  .tab-row { display: flex; gap: 0; }
+  .tab { padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; user-select: none; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* Upload zone */
+  main { padding: 32px 40px; max-width: 1400px; }
+  .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+  .upload-card { background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; transition: all .2s; position: relative; }
+  .upload-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .upload-card.has-file { border-style: solid; border-color: var(--accent); }
+  .upload-card input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-icon { font-size: 28px; margin-bottom: 10px; }
+  .upload-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .upload-hint { font-size: 12px; color: var(--text-sub); }
+  .upload-filename { font-size: 12px; color: var(--accent); margin-top: 8px; font-weight: 500; }
+  .upload-rows { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+
+  /* Button */
+  .btn-row { display: flex; gap: 12px; align-items: center; margin-bottom: 32px; }
+  .btn { padding: 10px 24px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3b58e0; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text-sub); border: 1px solid var(--border); }
+  .btn-secondary:hover { color: var(--text); }
+  .status-msg { font-size: 12px; color: var(--text-sub); }
+
+  /* Summary cards */
+  .summary-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 28px; }
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .summary-card .s-label { font-size: 11px; color: var(--text-sub); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .summary-card .s-value { font-size: 24px; font-weight: 800; line-height: 1; }
+  .summary-card .s-sub { font-size: 11px; color: var(--text-sub); margin-top: 4px; }
+  .c-new .s-value { color: var(--new); }
+  .c-del .s-value { color: var(--del); }
+  .c-up .s-value { color: var(--up); }
+  .c-down .s-value { color: var(--down); }
+  .c-total .s-value { color: var(--text); }
+
+  /* Filter bar */
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+  .filter-btn { padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; color: var(--text-sub); cursor: pointer; transition: all .2s; }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filter-btn:hover:not(.active) { color: var(--text); border-color: #4f6ef788; }
+  .search-input { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; font-family: var(--font); width: 220px; outline: none; }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-sub); }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead tr { background: var(--surface2); }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--text-sub); white-space: nowrap; border-bottom: 1px solid var(--border); letter-spacing: .3px; text-transform: uppercase; }
+  td { padding: 10px 14px; border-bottom: 1px solid #1e2136; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  /* Change type badge */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .badge-new { background: #1d3a6e; color: var(--new); }
+  .badge-del { background: #3d1f0f; color: var(--del); }
+  .badge-up { background: #0f2d1a; color: var(--up); }
+  .badge-down { background: #2d0f0f; color: var(--down); }
+  .badge-same { background: var(--surface2); color: var(--neutral); }
+
+  /* Amount diff */
+  .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .diff-up { color: var(--up); font-weight: 600; }
+  .diff-down { color: var(--down); font-weight: 600; }
+  .diff-zero { color: var(--text-sub); }
+
+  /* Empty / loading */
+  .empty-state { text-align: center; padding: 80px 20px; color: var(--text-sub); }
+  .empty-state .e-icon { font-size: 40px; margin-bottom: 14px; opacity: .5; }
+  .empty-state p { font-size: 14px; }
+
+  /* Column name truncate */
+  .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .code { font-family: monospace; font-size: 11px; color: var(--text-sub); }
+
+  /* Tab content */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Row highlight */
+  tr.row-new td { background: #0d1a2e; }
+  tr.row-del td { background: #1e0e08; }
+  tr.row-up td { background: #091810; }
+  tr.row-down td { background: #1c0c0c; }
+
+  .result-count { font-size: 12px; color: var(--text-sub); margin-left: auto; }
+
+  @media (max-width: 900px) {
+    main { padding: 20px; }
+    header { padding: 20px 20px 0; }
+    .upload-grid { grid-template-columns: 1fr; }
+    .summary-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div class="logo">P</div>
+    <div>
+      <h1>파이프라인 주간 변동이력</h1>
+      <div class="subtitle">전주 대비 금주 금액 변동 · 신규 등록 · 삭제 항목 분석</div>
+    </div>
+  </div>
+  <div class="tab-row">
+    <div class="tab active" onclick="switchTab('inventory')">인벤토리 비교</div>
+    <div class="tab" onclick="switchTab('sales')">매출 비교</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Inventory tab -->
+  <div id="tab-inventory" class="tab-content active">
+    <div class="upload-grid">
+      <div class="upload-card" id="inv-prev-card">
+        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'inv','prev')">
+        <div class="upload-icon">📂</div>
+        <div class="upload-label">전주 인벤토리</div>
+        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
+        <div class="upload-filename" id="inv-prev-name"></div>
+        <div class="upload-rows" id="inv-prev-rows"></div>
+      </div>
+      <div class="upload-card" id="inv-curr-card">
+        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'inv','curr')">
+        <div class="upload-icon">📂</div>
+        <div class="upload-label">금주 인벤토리</div>
+        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
+        <div class="upload-filename" id="inv-curr-name"></div>
+        <div class="upload-rows" id="inv-curr-rows"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="inv-compare-btn" onclick="runCompare('inv')" disabled>변동이력 분석</button>
+      <button class="btn btn-secondary" onclick="resetAll('inv')">초기화</button>
+      <span class="status-msg" id="inv-status"></span>
+    </div>
+    <div id="inv-result"></div>
+  </div>
+
+  <!-- Sales tab -->
+  <div id="tab-sales" class="tab-content">
+    <div class="upload-grid">
+      <div class="upload-card" id="sal-prev-card">
+        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'sal','prev')">
+        <div class="upload-icon">📂</div>
+        <div class="upload-label">전주 매출목록</div>
+        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
+        <div class="upload-filename" id="sal-prev-name"></div>
+        <div class="upload-rows" id="sal-prev-rows"></div>
+      </div>
+      <div class="upload-card" id="sal-curr-card">
+        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'sal','curr')">
+        <div class="upload-icon">📂</div>
+        <div class="upload-label">금주 매출목록</div>
+        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
+        <div class="upload-filename" id="sal-curr-name"></div>
+        <div class="upload-rows" id="sal-curr-rows"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="sal-compare-btn" onclick="runCompare('sal')" disabled>변동이력 분석</button>
+      <button class="btn btn-secondary" onclick="resetAll('sal')">초기화</button>
+      <span class="status-msg" id="sal-status"></span>
+    </div>
+    <div id="sal-result"></div>
+  </div>
+
+</main>
+
+<script>
+const DATA = { inv: {}, sal: {} };
+let activeFilter = 'all';
+
+// Tab switch
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['inventory','sales'][i] === t));
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + t).classList.add('active');
+}
+
+// File handling
+function handleFile(e, type, week) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type: 'binary' });
+    // Find first sheet with real data
+    let rows = [];
+    for (const sname of wb.SheetNames) {
+      const ws = wb.Sheets[sname];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (raw.length > 2) { rows = raw; break; }
+    }
+    DATA[type][week] = rows;
+    document.getElementById(`${type}-${week}-name`).textContent = file.name;
+    document.getElementById(`${type}-${week}-rows`).textContent = `${rows.length}행 로드됨`;
+    document.getElementById(`${type}-${week}-card`).classList.add('has-file');
+    checkReady(type);
+  };
+  reader.readAsBinaryString(file);
+}
+
+function checkReady(type) {
+  const ready = DATA[type].prev && DATA[type].curr;
+  document.getElementById(`${type}-compare-btn`).disabled = !ready;
+}
+
+function resetAll(type) {
+  DATA[type] = {};
+  ['prev','curr'].forEach(w => {
+    document.getElementById(`${type}-${w}-name`).textContent = '';
+    document.getElementById(`${type}-${w}-rows`).textContent = '';
+    document.getElementById(`${type}-${w}-card`).classList.remove('has-file');
+  });
+  document.getElementById(`${type}-compare-btn`).disabled = true;
+  document.getElementById(`${type}-result`).innerHTML = '';
+  document.getElementById(`${type}-status`).textContent = '';
+}
+
+// ─── Column detection ─────────────────────────────────────────────────────────
+
+function detectConfig(type, rows) {
+  if (!rows || rows.length === 0) return null;
+  const keys = Object.keys(rows[0]);
+  const keyStr = keys.join('|').toLowerCase();
+
+  if (type === 'inv') {
+    // Inventory: key by 프로젝트코드, amount = 총 합계
+    const codeKey = keys.find(k => /프로젝트.?코드|프로젝트코드/i.test(k)) || '프로젝트코드';
+    const nameKey = keys.find(k => /프로젝트명/i.test(k)) || keys[3];
+    const amtKey  = keys.find(k => /총.?합계|총합계/i.test(k)) || keys[keys.length-1];
+    const custKey = keys.find(k => /고객사/i.test(k)) || keys[1];
+    const salesKey= keys.find(k => /영업담당|영업대표/i.test(k)) || '';
+    const statusKey= keys.find(k => /수주.?확도|수주확도/i.test(k)) || '';
+    return { idKey: codeKey, nameKey, amtKey, custKey, salesKey, statusKey };
+  } else {
+    // Sales: key by 매출 번호, amount = 합계
+    const idKey   = keys.find(k => /매출.?번호/i.test(k)) || keys[6];
+    const nameKey = keys.find(k => /프로젝트명|수주계약명/i.test(k)) || keys[4];
+    const amtKey  = keys.find(k => /^합계$|합계$/i.test(k)) || keys.find(k => /합계/i.test(k));
+    const custKey = keys.find(k => /고객사명/i.test(k)) || keys[5];
+    const salesKey= keys.find(k => /영업대표/i.test(k)) || '';
+    const statusKey= keys.find(k => /^상태$|매출상태/i.test(k)) || '';
+    return { idKey, nameKey, amtKey, custKey, salesKey, statusKey };
+  }
+}
+
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+// ─── Compare logic ────────────────────────────────────────────────────────────
+
+function runCompare(type) {
+  const prev = DATA[type].prev;
+  const curr = DATA[type].curr;
+  const cfg = detectConfig(type, [...prev, ...curr]);
+  if (!cfg) { document.getElementById(`${type}-status`).textContent = '컬럼 구조를 인식할 수 없습니다.'; return; }
+
+  // Build maps
+  const prevMap = {};
+  prev.forEach(r => { const id = String(r[cfg.idKey] || '').trim(); if (id) prevMap[id] = r; });
+  const currMap = {};
+  curr.forEach(r => { const id = String(r[cfg.idKey] || '').trim(); if (id) currMap[id] = r; });
+
+  const allIds = new Set([...Object.keys(prevMap), ...Object.keys(currMap)]);
+  const changes = [];
+
+  allIds.forEach(id => {
+    const p = prevMap[id], c = currMap[id];
+    const pAmt = p ? toNum(p[cfg.amtKey]) : 0;
+    const cAmt = c ? toNum(c[cfg.amtKey]) : 0;
+    const diff = cAmt - pAmt;
+
+    let changeType;
+    if (!p && c)  changeType = 'new';
+    else if (p && !c) changeType = 'del';
+    else if (Math.abs(diff) > 0.01) changeType = diff > 0 ? 'up' : 'down';
+    else changeType = 'same';
+
+    const row = c || p;
+    changes.push({
+      id,
+      name: String(row[cfg.nameKey] || '').replace(/\(.*?\)/g,'').trim().slice(0,60),
+      cust: String(row[cfg.custKey] || ''),
+      sales: cfg.salesKey ? String(row[cfg.salesKey] || '') : '',
+      status: cfg.statusKey ? String(row[cfg.statusKey] || '') : '',
+      prevAmt: pAmt,
+      currAmt: cAmt,
+      diff,
+      changeType,
+    });
+  });
+
+  // Sort: new/del/up/down first, then same; by |diff| desc
+  const order = { new:0, del:1, up:2, down:3, same:4 };
+  changes.sort((a,b) => {
+    if (order[a.changeType] !== order[b.changeType]) return order[a.changeType] - order[b.changeType];
+    return Math.abs(b.diff) - Math.abs(a.diff);
+  });
+
+  renderResult(type, changes, cfg);
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+
+function renderResult(type, changes, cfg) {
+  const isInv = type === 'inv';
+  const unit = isInv ? '백만원' : '원';
+  const fmt = isInv
+    ? v => Math.abs(v) >= 1000 ? (v/1000).toFixed(2) + '십억' : v.toFixed(2) + '백만'
+    : v => Math.abs(v) >= 100000000 ? (v/100000000).toFixed(1) + '억' : (v/1000000).toFixed(1) + '백만';
+
+  // Counts
+  const byType = { new:[], del:[], up:[], down:[], same:[] };
+  changes.forEach(c => byType[c.changeType].push(c));
+
+  const totalDiff = changes.reduce((s,c) => s + c.diff, 0);
+  const totalCurr = changes.filter(c => c.changeType !== 'del').reduce((s,c) => s + c.currAmt, 0);
+
+  const summaryHtml = `
+  <div class="summary-row">
+    <div class="summary-card c-new">
+      <div class="s-label">신규 등록</div>
+      <div class="s-value">${byType.new.length}</div>
+      <div class="s-sub">+ ${fmt(byType.new.reduce((s,c)=>s+c.currAmt,0))} ${unit}</div>
+    </div>
+    <div class="summary-card c-del">
+      <div class="s-label">삭제 / 종결</div>
+      <div class="s-value">${byType.del.length}</div>
+      <div class="s-sub">- ${fmt(byType.del.reduce((s,c)=>s+c.prevAmt,0))} ${unit}</div>
+    </div>
+    <div class="summary-card c-up">
+      <div class="s-label">금액 증가</div>
+      <div class="s-value">${byType.up.length}</div>
+      <div class="s-sub">+ ${fmt(byType.up.reduce((s,c)=>s+c.diff,0))} ${unit}</div>
+    </div>
+    <div class="summary-card c-down">
+      <div class="s-label">금액 감소</div>
+      <div class="s-value">${byType.down.length}</div>
+      <div class="s-sub">- ${fmt(Math.abs(byType.down.reduce((s,c)=>s+c.diff,0)))} ${unit}</div>
+    </div>
+    <div class="summary-card c-total">
+      <div class="s-label">순 변동합계</div>
+      <div class="s-value" style="color:${totalDiff>=0?'var(--up)':'var(--down)'}">${totalDiff>=0?'+':''}${fmt(totalDiff)}</div>
+      <div class="s-sub">${unit} | 변동항목 ${changes.filter(c=>c.changeType!=='same').length}건</div>
+    </div>
+  </div>`;
+
+  const badgeMap = { new:'badge-new', del:'badge-del', up:'badge-up', down:'badge-down', same:'badge-same' };
+  const labelMap = { new:'신규', del:'삭제', up:'증가', down:'감소', same:'유지' };
+  const rowClass = { new:'row-new', del:'row-del', up:'row-up', down:'row-down', same:'' };
+
+  let currentFilter = 'all';
+  let currentSearch = '';
+
+  function buildTable(filter, search) {
+    currentFilter = filter;
+    currentSearch = search.toLowerCase();
+    const filtered = changes.filter(c => {
+      if (filter !== 'all' && c.changeType !== filter) return false;
+      if (search && !c.name.toLowerCase().includes(currentSearch) && !c.cust.toLowerCase().includes(currentSearch) && !c.id.toLowerCase().includes(currentSearch)) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) return `<div class="empty-state"><div class="e-icon">🔍</div><p>해당 조건의 항목이 없습니다.</p></div>`;
+
+    const rows = filtered.map(c => {
+      const diffStr = c.changeType === 'new' ? `<span class="diff-up">신규 ${fmt(c.currAmt)}</span>`
+        : c.changeType === 'del' ? `<span class="diff-down">삭제 ${fmt(c.prevAmt)}</span>`
+        : c.diff === 0 ? `<span class="diff-zero">변동 없음</span>`
+        : `<span class="${c.diff>0?'diff-up':'diff-down'}">${c.diff>0?'+':''}${fmt(c.diff)}</span>`;
+
+      const prevStr = c.prevAmt ? fmt(c.prevAmt) : '-';
+      const currStr = c.currAmt ? fmt(c.currAmt) : '-';
+
+      return `<tr class="${rowClass[c.changeType]}">
+        <td><span class="badge ${badgeMap[c.changeType]}">${labelMap[c.changeType]}</span></td>
+        <td class="code">${escHtml(c.id)}</td>
+        <td><div class="proj-name" title="${escHtml(c.name)}">${escHtml(c.name)}</div></td>
+        <td>${escHtml(c.cust)}</td>
+        ${cfg.salesKey ? `<td>${escHtml(c.sales)}</td>` : ''}
+        <td class="amount">${prevStr}</td>
+        <td class="amount">${currStr}</td>
+        <td class="amount">${diffStr}</td>
+        ${cfg.statusKey ? `<td><span style="font-size:11px;color:var(--text-sub)">${escHtml(c.status)}</span></td>` : ''}
+      </tr>`;
+    }).join('');
+
+    return `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>구분</th>
+        <th>코드</th>
+        <th>프로젝트명</th>
+        <th>고객사</th>
+        ${cfg.salesKey ? '<th>영업담당</th>' : ''}
+        <th>전주 (${unit})</th>
+        <th>금주 (${unit})</th>
+        <th>변동</th>
+        ${cfg.statusKey ? `<th>${isInv?'수주확도':'상태'}</th>` : ''}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
+  const filterBar = `
+  <div class="filter-bar">
+    <button class="filter-btn active" id="${type}-f-all" onclick="applyFilter('${type}','all')">전체 (${changes.length})</button>
+    <button class="filter-btn" id="${type}-f-new" onclick="applyFilter('${type}','new')">신규 (${byType.new.length})</button>
+    <button class="filter-btn" id="${type}-f-del" onclick="applyFilter('${type}','del')">삭제 (${byType.del.length})</button>
+    <button class="filter-btn" id="${type}-f-up" onclick="applyFilter('${type}','up')">증가 (${byType.up.length})</button>
+    <button class="filter-btn" id="${type}-f-down" onclick="applyFilter('${type}','down')">감소 (${byType.down.length})</button>
+    <button class="filter-btn" id="${type}-f-same" onclick="applyFilter('${type}','same')">유지 (${byType.same.length})</button>
+    <input class="search-input" id="${type}-search" placeholder="프로젝트명 / 고객사 검색…" oninput="applySearch('${type}')">
+    <button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="exportCsv('${type}')">📥 CSV 내보내기</button>
+  </div>`;
+
+  const tableDiv = `<div id="${type}-table-area">${buildTable('all','')}</div>`;
+
+  document.getElementById(`${type}-result`).innerHTML = summaryHtml + filterBar + tableDiv;
+
+  // Store for filter/search use
+  window[`_changes_${type}`] = changes;
+  window[`_cfg_${type}`] = cfg;
+  window[`_isInv_${type}`] = isInv;
+  window[`_fmt_${type}`] = fmt;
+  window[`_buildTable_${type}`] = buildTable;
+}
+
+function applyFilter(type, filter) {
+  document.querySelectorAll(`[id^="${type}-f-"]`).forEach(el => el.classList.remove('active'));
+  document.getElementById(`${type}-f-${filter}`).classList.add('active');
+  const search = document.getElementById(`${type}-search`)?.value || '';
+  document.getElementById(`${type}-table-area`).innerHTML = window[`_buildTable_${type}`](filter, search);
+  window[`_currentFilter_${type}`] = filter;
+}
+
+function applySearch(type) {
+  const search = document.getElementById(`${type}-search`).value;
+  const filter = window[`_currentFilter_${type}`] || 'all';
+  document.getElementById(`${type}-table-area`).innerHTML = window[`_buildTable_${type}`](filter, search);
+}
+
+function exportCsv(type) {
+  const changes = window[`_changes_${type}`];
+  const cfg = window[`_cfg_${type}`];
+  const isInv = window[`_isInv_${type}`];
+  const unit = isInv ? '백만원' : '원';
+  const labelMap = { new:'신규', del:'삭제', up:'증가', down:'감소', same:'유지' };
+
+  const header = ['구분','코드','프로젝트명','고객사','영업담당','전주금액','금주금액','변동금액','상태'].join(',');
+  const rows = changes.map(c => [
+    labelMap[c.changeType], c.id,
+    `"${c.name.replace(/"/g,'""')}"`,
+    `"${c.cust.replace(/"/g,'""')}"`,
+    c.sales, c.prevAmt, c.currAmt, c.diff, c.status
+  ].join(','));
+
+  const blob = new Blob(['\uFEFF'+header+'\n'+rows.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `변동이력_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
