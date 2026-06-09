@@ -36,17 +36,37 @@
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab:hover:not(.active) { color: var(--text); }
 
-  /* Upload zone */
+  /* Main layout */
   main { padding: 32px 40px; max-width: 1400px; }
+
+  /* Inventory sub-tabs */
+  .inv-subtab-row { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .inv-subtab { padding: 7px 20px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; font-weight: 600; color: var(--text-sub); cursor: pointer; transition: all .2s; user-select: none; }
+  .inv-subtab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .inv-subtab:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+  /* Tab content */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .inv-sub { display: none; }
+  .inv-sub.active { display: block; }
+
+  /* Upload zone */
   .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-  .upload-card { background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px; padding: 28px; text-align: center; cursor: pointer; transition: all .2s; position: relative; }
+  .upload-card {
+    background: var(--surface); border: 1.5px dashed var(--border); border-radius: 12px;
+    padding: 28px; text-align: center; cursor: pointer; transition: all .2s; user-select: none;
+  }
   .upload-card:hover { border-color: var(--accent); background: var(--surface2); }
   .upload-card.has-file { border-style: solid; border-color: var(--accent); }
-  .upload-card input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-card.drag-over {
+    border-color: var(--accent); background: rgba(79,110,247,0.12);
+    border-style: solid; transform: scale(1.01);
+  }
   .upload-icon { font-size: 28px; margin-bottom: 10px; }
   .upload-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
   .upload-hint { font-size: 12px; color: var(--text-sub); }
-  .upload-filename { font-size: 12px; color: var(--accent); margin-top: 8px; font-weight: 500; }
+  .upload-filename { font-size: 12px; color: var(--accent); margin-top: 8px; font-weight: 500; word-break: break-all; }
   .upload-rows { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
 
   /* Button */
@@ -103,26 +123,18 @@
   .diff-down { color: var(--down); font-weight: 600; }
   .diff-zero { color: var(--text-sub); }
 
-  /* Empty / loading */
+  /* Empty state */
   .empty-state { text-align: center; padding: 80px 20px; color: var(--text-sub); }
   .empty-state .e-icon { font-size: 40px; margin-bottom: 14px; opacity: .5; }
   .empty-state p { font-size: 14px; }
 
-  /* Column name truncate */
+  /* Misc */
   .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .code { font-family: monospace; font-size: 11px; color: var(--text-sub); }
-
-  /* Tab content */
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  /* Row highlight */
   tr.row-new td { background: #0d1a2e; }
   tr.row-del td { background: #1e0e08; }
   tr.row-up td { background: #091810; }
   tr.row-down td { background: #1c0c0c; }
-
-  .result-count { font-size: 12px; color: var(--text-sub); margin-left: auto; }
 
   @media (max-width: 900px) {
     main { padding: 20px; }
@@ -152,48 +164,26 @@
 
   <!-- Inventory tab -->
   <div id="tab-inventory" class="tab-content active">
-    <div class="upload-grid">
-      <div class="upload-card" id="inv-prev-card">
-        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'inv','prev')">
-        <div class="upload-icon">📂</div>
-        <div class="upload-label">전주 인벤토리</div>
-        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
-        <div class="upload-filename" id="inv-prev-name"></div>
-        <div class="upload-rows" id="inv-prev-rows"></div>
-      </div>
-      <div class="upload-card" id="inv-curr-card">
-        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'inv','curr')">
-        <div class="upload-icon">📂</div>
-        <div class="upload-label">금주 인벤토리</div>
-        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
-        <div class="upload-filename" id="inv-curr-name"></div>
-        <div class="upload-rows" id="inv-curr-rows"></div>
-      </div>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-primary" id="inv-compare-btn" onclick="runCompare('inv')" disabled>변동이력 분석</button>
-      <button class="btn btn-secondary" onclick="resetAll('inv')">초기화</button>
-      <span class="status-msg" id="inv-status"></span>
-    </div>
-    <div id="inv-result"></div>
+    <div class="inv-subtab-row" id="inv-subtab-row"></div>
+    <div id="inv-sections"></div>
   </div>
 
   <!-- Sales tab -->
   <div id="tab-sales" class="tab-content">
     <div class="upload-grid">
       <div class="upload-card" id="sal-prev-card">
-        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'sal','prev')">
+        <input type="file" accept=".xlsx,.xls" id="sal-prev-input" style="display:none">
         <div class="upload-icon">📂</div>
         <div class="upload-label">전주 매출목록</div>
-        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
+        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
         <div class="upload-filename" id="sal-prev-name"></div>
         <div class="upload-rows" id="sal-prev-rows"></div>
       </div>
       <div class="upload-card" id="sal-curr-card">
-        <input type="file" accept=".xlsx,.xls" onchange="handleFile(event,'sal','curr')">
+        <input type="file" accept=".xlsx,.xls" id="sal-curr-input" style="display:none">
         <div class="upload-icon">📂</div>
         <div class="upload-label">금주 매출목록</div>
-        <div class="upload-hint">.xlsx 파일을 선택하세요</div>
+        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
         <div class="upload-filename" id="sal-curr-name"></div>
         <div class="upload-rows" id="sal-curr-rows"></div>
       </div>
@@ -209,24 +199,114 @@
 </main>
 
 <script>
-const DATA = { inv: {}, sal: {} };
-let activeFilter = 'all';
+// ─── Data store ───────────────────────────────────────────────────────────────
 
-// Tab switch
-function switchTab(t) {
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['inventory','sales'][i] === t));
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + t).classList.add('active');
+const INV_TYPES = ['100', '90', '75', '50'];
+const DATA = { sal: {} };
+INV_TYPES.forEach(p => { DATA['inv' + p] = {}; });
+
+// ─── Page init ────────────────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', () => {
+  buildInventorySections();
+  // Setup drag & drop + click for all cards
+  INV_TYPES.forEach(p => {
+    setupCard('inv' + p, 'prev');
+    setupCard('inv' + p, 'curr');
+  });
+  setupCard('sal', 'prev');
+  setupCard('sal', 'curr');
+});
+
+function buildInventorySections() {
+  const subtabRow = document.getElementById('inv-subtab-row');
+  const sectionsDiv = document.getElementById('inv-sections');
+
+  INV_TYPES.forEach((pct, i) => {
+    const typeId = 'inv' + pct;
+    const isFirst = i === 0;
+
+    // Sub-tab button
+    const tab = document.createElement('div');
+    tab.id = 'inv-subtab-' + pct;
+    tab.className = 'inv-subtab' + (isFirst ? ' active' : '');
+    tab.textContent = pct + '%';
+    tab.onclick = () => switchInvTab(pct);
+    subtabRow.appendChild(tab);
+
+    // Section HTML
+    const section = document.createElement('div');
+    section.id = 'inv-sub-' + pct;
+    section.className = 'inv-sub' + (isFirst ? ' active' : '');
+    section.innerHTML = `
+      <div class="upload-grid">
+        <div class="upload-card" id="${typeId}-prev-card">
+          <input type="file" accept=".xlsx,.xls" id="${typeId}-prev-input" style="display:none">
+          <div class="upload-icon">📂</div>
+          <div class="upload-label">전주 인벤토리 ${pct}%</div>
+          <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
+          <div class="upload-filename" id="${typeId}-prev-name"></div>
+          <div class="upload-rows" id="${typeId}-prev-rows"></div>
+        </div>
+        <div class="upload-card" id="${typeId}-curr-card">
+          <input type="file" accept=".xlsx,.xls" id="${typeId}-curr-input" style="display:none">
+          <div class="upload-icon">📂</div>
+          <div class="upload-label">금주 인벤토리 ${pct}%</div>
+          <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
+          <div class="upload-filename" id="${typeId}-curr-name"></div>
+          <div class="upload-rows" id="${typeId}-curr-rows"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="${typeId}-compare-btn" onclick="runCompare('${typeId}')" disabled>변동이력 분석</button>
+        <button class="btn btn-secondary" onclick="resetAll('${typeId}')">초기화</button>
+        <span class="status-msg" id="${typeId}-status"></span>
+      </div>
+      <div id="${typeId}-result"></div>`;
+    sectionsDiv.appendChild(section);
+  });
 }
 
-// File handling
-function handleFile(e, type, week) {
-  const file = e.target.files[0];
-  if (!file) return;
+// ─── Upload card setup (click + drag & drop) ─────────────────────────────────
+
+function setupCard(type, week) {
+  const card = document.getElementById(`${type}-${week}-card`);
+  const input = document.getElementById(`${type}-${week}-input`);
+  if (!card || !input) return;
+
+  card.addEventListener('click', () => input.click());
+
+  input.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) processFile(file, type, week);
+    e.target.value = ''; // allow re-selecting same file
+  });
+
+  card.addEventListener('dragover', e => {
+    e.preventDefault();
+    card.classList.add('drag-over');
+  });
+  card.addEventListener('dragleave', e => {
+    if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over');
+  });
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file, type, week);
+  });
+}
+
+// ─── File processing ──────────────────────────────────────────────────────────
+
+function processFile(file, type, week) {
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
+    return;
+  }
   const reader = new FileReader();
   reader.onload = ev => {
     const wb = XLSX.read(ev.target.result, { type: 'binary' });
-    // Find first sheet with real data
     let rows = [];
     for (const sname of wb.SheetNames) {
       const ws = wb.Sheets[sname];
@@ -249,7 +329,7 @@ function checkReady(type) {
 
 function resetAll(type) {
   DATA[type] = {};
-  ['prev','curr'].forEach(w => {
+  ['prev', 'curr'].forEach(w => {
     document.getElementById(`${type}-${w}-name`).textContent = '';
     document.getElementById(`${type}-${w}-rows`).textContent = '';
     document.getElementById(`${type}-${w}-card`).classList.remove('has-file');
@@ -259,29 +339,43 @@ function resetAll(type) {
   document.getElementById(`${type}-status`).textContent = '';
 }
 
+// ─── Tab switch ───────────────────────────────────────────────────────────────
+
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((el, i) =>
+    el.classList.toggle('active', ['inventory', 'sales'][i] === t));
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + t).classList.add('active');
+}
+
+function switchInvTab(pct) {
+  document.querySelectorAll('.inv-subtab').forEach(el => el.classList.remove('active'));
+  document.getElementById('inv-subtab-' + pct).classList.add('active');
+  document.querySelectorAll('.inv-sub').forEach(el => el.classList.remove('active'));
+  document.getElementById('inv-sub-' + pct).classList.add('active');
+}
+
 // ─── Column detection ─────────────────────────────────────────────────────────
 
 function detectConfig(type, rows) {
   if (!rows || rows.length === 0) return null;
   const keys = Object.keys(rows[0]);
-  const keyStr = keys.join('|').toLowerCase();
+  const isInv = type.startsWith('inv');
 
-  if (type === 'inv') {
-    // Inventory: key by 프로젝트코드, amount = 총 합계
-    const codeKey = keys.find(k => /프로젝트.?코드|프로젝트코드/i.test(k)) || '프로젝트코드';
-    const nameKey = keys.find(k => /프로젝트명/i.test(k)) || keys[3];
-    const amtKey  = keys.find(k => /총.?합계|총합계/i.test(k)) || keys[keys.length-1];
-    const custKey = keys.find(k => /고객사/i.test(k)) || keys[1];
-    const salesKey= keys.find(k => /영업담당|영업대표/i.test(k)) || '';
+  if (isInv) {
+    const codeKey  = keys.find(k => /프로젝트.?코드|프로젝트코드/i.test(k)) || '프로젝트코드';
+    const nameKey  = keys.find(k => /프로젝트명/i.test(k)) || keys[3];
+    const amtKey   = keys.find(k => /총.?합계|총합계/i.test(k)) || keys[keys.length - 1];
+    const custKey  = keys.find(k => /고객사/i.test(k)) || keys[1];
+    const salesKey = keys.find(k => /영업담당|영업대표/i.test(k)) || '';
     const statusKey= keys.find(k => /수주.?확도|수주확도/i.test(k)) || '';
     return { idKey: codeKey, nameKey, amtKey, custKey, salesKey, statusKey };
   } else {
-    // Sales: key by 매출 번호, amount = 합계
-    const idKey   = keys.find(k => /매출.?번호/i.test(k)) || keys[6];
-    const nameKey = keys.find(k => /프로젝트명|수주계약명/i.test(k)) || keys[4];
-    const amtKey  = keys.find(k => /^합계$|합계$/i.test(k)) || keys.find(k => /합계/i.test(k));
-    const custKey = keys.find(k => /고객사명/i.test(k)) || keys[5];
-    const salesKey= keys.find(k => /영업대표/i.test(k)) || '';
+    const idKey    = keys.find(k => /매출.?번호/i.test(k)) || keys[6];
+    const nameKey  = keys.find(k => /프로젝트명|수주계약명/i.test(k)) || keys[4];
+    const amtKey   = keys.find(k => /^합계$|합계$/i.test(k)) || keys.find(k => /합계/i.test(k));
+    const custKey  = keys.find(k => /고객사명/i.test(k)) || keys[5];
+    const salesKey = keys.find(k => /영업대표/i.test(k)) || '';
     const statusKey= keys.find(k => /^상태$|매출상태/i.test(k)) || '';
     return { idKey, nameKey, amtKey, custKey, salesKey, statusKey };
   }
@@ -299,9 +393,11 @@ function runCompare(type) {
   const prev = DATA[type].prev;
   const curr = DATA[type].curr;
   const cfg = detectConfig(type, [...prev, ...curr]);
-  if (!cfg) { document.getElementById(`${type}-status`).textContent = '컬럼 구조를 인식할 수 없습니다.'; return; }
+  if (!cfg) {
+    document.getElementById(`${type}-status`).textContent = '컬럼 구조를 인식할 수 없습니다.';
+    return;
+  }
 
-  // Build maps
   const prevMap = {};
   prev.forEach(r => { const id = String(r[cfg.idKey] || '').trim(); if (id) prevMap[id] = r; });
   const currMap = {};
@@ -317,28 +413,24 @@ function runCompare(type) {
     const diff = cAmt - pAmt;
 
     let changeType;
-    if (!p && c)  changeType = 'new';
-    else if (p && !c) changeType = 'del';
+    if (!p && c)           changeType = 'new';
+    else if (p && !c)      changeType = 'del';
     else if (Math.abs(diff) > 0.01) changeType = diff > 0 ? 'up' : 'down';
-    else changeType = 'same';
+    else                   changeType = 'same';
 
     const row = c || p;
     changes.push({
       id,
-      name: String(row[cfg.nameKey] || '').replace(/\(.*?\)/g,'').trim().slice(0,60),
+      name: String(row[cfg.nameKey] || '').replace(/\(.*?\)/g, '').trim().slice(0, 60),
       cust: String(row[cfg.custKey] || ''),
       sales: cfg.salesKey ? String(row[cfg.salesKey] || '') : '',
       status: cfg.statusKey ? String(row[cfg.statusKey] || '') : '',
-      prevAmt: pAmt,
-      currAmt: cAmt,
-      diff,
-      changeType,
+      prevAmt: pAmt, currAmt: cAmt, diff, changeType,
     });
   });
 
-  // Sort: new/del/up/down first, then same; by |diff| desc
-  const order = { new:0, del:1, up:2, down:3, same:4 };
-  changes.sort((a,b) => {
+  const order = { new: 0, del: 1, up: 2, down: 3, same: 4 };
+  changes.sort((a, b) => {
     if (order[a.changeType] !== order[b.changeType]) return order[a.changeType] - order[b.changeType];
     return Math.abs(b.diff) - Math.abs(a.diff);
   });
@@ -349,61 +441,55 @@ function runCompare(type) {
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 function renderResult(type, changes, cfg) {
-  const isInv = type === 'inv';
+  const isInv = type.startsWith('inv');
   const unit = isInv ? '백만원' : '원';
   const fmt = isInv
-    ? v => Math.abs(v) >= 1000 ? (v/1000).toFixed(2) + '십억' : v.toFixed(2) + '백만'
-    : v => Math.abs(v) >= 100000000 ? (v/100000000).toFixed(1) + '억' : (v/1000000).toFixed(1) + '백만';
+    ? v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(2) + '십억' : v.toFixed(2) + '백만'
+    : v => Math.abs(v) >= 100000000 ? (v / 100000000).toFixed(1) + '억' : (v / 1000000).toFixed(1) + '백만';
 
-  // Counts
-  const byType = { new:[], del:[], up:[], down:[], same:[] };
+  const byType = { new: [], del: [], up: [], down: [], same: [] };
   changes.forEach(c => byType[c.changeType].push(c));
 
-  const totalDiff = changes.reduce((s,c) => s + c.diff, 0);
-  const totalCurr = changes.filter(c => c.changeType !== 'del').reduce((s,c) => s + c.currAmt, 0);
+  const totalDiff = changes.reduce((s, c) => s + c.diff, 0);
 
   const summaryHtml = `
   <div class="summary-row">
     <div class="summary-card c-new">
       <div class="s-label">신규 등록</div>
       <div class="s-value">${byType.new.length}</div>
-      <div class="s-sub">+ ${fmt(byType.new.reduce((s,c)=>s+c.currAmt,0))} ${unit}</div>
+      <div class="s-sub">+ ${fmt(byType.new.reduce((s, c) => s + c.currAmt, 0))} ${unit}</div>
     </div>
     <div class="summary-card c-del">
       <div class="s-label">삭제 / 종결</div>
       <div class="s-value">${byType.del.length}</div>
-      <div class="s-sub">- ${fmt(byType.del.reduce((s,c)=>s+c.prevAmt,0))} ${unit}</div>
+      <div class="s-sub">- ${fmt(byType.del.reduce((s, c) => s + c.prevAmt, 0))} ${unit}</div>
     </div>
     <div class="summary-card c-up">
       <div class="s-label">금액 증가</div>
       <div class="s-value">${byType.up.length}</div>
-      <div class="s-sub">+ ${fmt(byType.up.reduce((s,c)=>s+c.diff,0))} ${unit}</div>
+      <div class="s-sub">+ ${fmt(byType.up.reduce((s, c) => s + c.diff, 0))} ${unit}</div>
     </div>
     <div class="summary-card c-down">
       <div class="s-label">금액 감소</div>
       <div class="s-value">${byType.down.length}</div>
-      <div class="s-sub">- ${fmt(Math.abs(byType.down.reduce((s,c)=>s+c.diff,0)))} ${unit}</div>
+      <div class="s-sub">- ${fmt(Math.abs(byType.down.reduce((s, c) => s + c.diff, 0)))} ${unit}</div>
     </div>
     <div class="summary-card c-total">
       <div class="s-label">순 변동합계</div>
-      <div class="s-value" style="color:${totalDiff>=0?'var(--up)':'var(--down)'}">${totalDiff>=0?'+':''}${fmt(totalDiff)}</div>
-      <div class="s-sub">${unit} | 변동항목 ${changes.filter(c=>c.changeType!=='same').length}건</div>
+      <div class="s-value" style="color:${totalDiff >= 0 ? 'var(--up)' : 'var(--down)'}">${totalDiff >= 0 ? '+' : ''}${fmt(totalDiff)}</div>
+      <div class="s-sub">${unit} | 변동항목 ${changes.filter(c => c.changeType !== 'same').length}건</div>
     </div>
   </div>`;
 
-  const badgeMap = { new:'badge-new', del:'badge-del', up:'badge-up', down:'badge-down', same:'badge-same' };
-  const labelMap = { new:'신규', del:'삭제', up:'증가', down:'감소', same:'유지' };
-  const rowClass = { new:'row-new', del:'row-del', up:'row-up', down:'row-down', same:'' };
-
-  let currentFilter = 'all';
-  let currentSearch = '';
+  const badgeMap = { new: 'badge-new', del: 'badge-del', up: 'badge-up', down: 'badge-down', same: 'badge-same' };
+  const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', same: '유지' };
+  const rowClass = { new: 'row-new', del: 'row-del', up: 'row-up', down: 'row-down', same: '' };
 
   function buildTable(filter, search) {
-    currentFilter = filter;
-    currentSearch = search.toLowerCase();
+    const q = search.toLowerCase();
     const filtered = changes.filter(c => {
       if (filter !== 'all' && c.changeType !== filter) return false;
-      if (search && !c.name.toLowerCase().includes(currentSearch) && !c.cust.toLowerCase().includes(currentSearch) && !c.id.toLowerCase().includes(currentSearch)) return false;
+      if (q && !c.name.toLowerCase().includes(q) && !c.cust.toLowerCase().includes(q) && !c.id.toLowerCase().includes(q)) return false;
       return true;
     });
 
@@ -413,10 +499,7 @@ function renderResult(type, changes, cfg) {
       const diffStr = c.changeType === 'new' ? `<span class="diff-up">신규 ${fmt(c.currAmt)}</span>`
         : c.changeType === 'del' ? `<span class="diff-down">삭제 ${fmt(c.prevAmt)}</span>`
         : c.diff === 0 ? `<span class="diff-zero">변동 없음</span>`
-        : `<span class="${c.diff>0?'diff-up':'diff-down'}">${c.diff>0?'+':''}${fmt(c.diff)}</span>`;
-
-      const prevStr = c.prevAmt ? fmt(c.prevAmt) : '-';
-      const currStr = c.currAmt ? fmt(c.currAmt) : '-';
+        : `<span class="${c.diff > 0 ? 'diff-up' : 'diff-down'}">${c.diff > 0 ? '+' : ''}${fmt(c.diff)}</span>`;
 
       return `<tr class="${rowClass[c.changeType]}">
         <td><span class="badge ${badgeMap[c.changeType]}">${labelMap[c.changeType]}</span></td>
@@ -424,8 +507,8 @@ function renderResult(type, changes, cfg) {
         <td><div class="proj-name" title="${escHtml(c.name)}">${escHtml(c.name)}</div></td>
         <td>${escHtml(c.cust)}</td>
         ${cfg.salesKey ? `<td>${escHtml(c.sales)}</td>` : ''}
-        <td class="amount">${prevStr}</td>
-        <td class="amount">${currStr}</td>
+        <td class="amount">${c.prevAmt ? fmt(c.prevAmt) : '-'}</td>
+        <td class="amount">${c.currAmt ? fmt(c.currAmt) : '-'}</td>
         <td class="amount">${diffStr}</td>
         ${cfg.statusKey ? `<td><span style="font-size:11px;color:var(--text-sub)">${escHtml(c.status)}</span></td>` : ''}
       </tr>`;
@@ -433,15 +516,10 @@ function renderResult(type, changes, cfg) {
 
     return `<div class="table-wrap"><table>
       <thead><tr>
-        <th>구분</th>
-        <th>코드</th>
-        <th>프로젝트명</th>
-        <th>고객사</th>
+        <th>구분</th><th>코드</th><th>프로젝트명</th><th>고객사</th>
         ${cfg.salesKey ? '<th>영업담당</th>' : ''}
-        <th>전주 (${unit})</th>
-        <th>금주 (${unit})</th>
-        <th>변동</th>
-        ${cfg.statusKey ? `<th>${isInv?'수주확도':'상태'}</th>` : ''}
+        <th>전주 (${unit})</th><th>금주 (${unit})</th><th>변동</th>
+        ${cfg.statusKey ? `<th>${isInv ? '수주확도' : '상태'}</th>` : ''}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -449,24 +527,21 @@ function renderResult(type, changes, cfg) {
 
   const filterBar = `
   <div class="filter-bar">
-    <button class="filter-btn active" id="${type}-f-all" onclick="applyFilter('${type}','all')">전체 (${changes.length})</button>
-    <button class="filter-btn" id="${type}-f-new" onclick="applyFilter('${type}','new')">신규 (${byType.new.length})</button>
-    <button class="filter-btn" id="${type}-f-del" onclick="applyFilter('${type}','del')">삭제 (${byType.del.length})</button>
-    <button class="filter-btn" id="${type}-f-up" onclick="applyFilter('${type}','up')">증가 (${byType.up.length})</button>
+    <button class="filter-btn active" id="${type}-f-all"  onclick="applyFilter('${type}','all')">전체 (${changes.length})</button>
+    <button class="filter-btn" id="${type}-f-new"  onclick="applyFilter('${type}','new')">신규 (${byType.new.length})</button>
+    <button class="filter-btn" id="${type}-f-del"  onclick="applyFilter('${type}','del')">삭제 (${byType.del.length})</button>
+    <button class="filter-btn" id="${type}-f-up"   onclick="applyFilter('${type}','up')">증가 (${byType.up.length})</button>
     <button class="filter-btn" id="${type}-f-down" onclick="applyFilter('${type}','down')">감소 (${byType.down.length})</button>
     <button class="filter-btn" id="${type}-f-same" onclick="applyFilter('${type}','same')">유지 (${byType.same.length})</button>
     <input class="search-input" id="${type}-search" placeholder="프로젝트명 / 고객사 검색…" oninput="applySearch('${type}')">
     <button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="exportCsv('${type}')">📥 CSV 내보내기</button>
   </div>`;
 
-  const tableDiv = `<div id="${type}-table-area">${buildTable('all','')}</div>`;
+  document.getElementById(`${type}-result`).innerHTML =
+    summaryHtml + filterBar + `<div id="${type}-table-area">${buildTable('all', '')}</div>`;
 
-  document.getElementById(`${type}-result`).innerHTML = summaryHtml + filterBar + tableDiv;
-
-  // Store for filter/search use
   window[`_changes_${type}`] = changes;
   window[`_cfg_${type}`] = cfg;
-  window[`_isInv_${type}`] = isInv;
   window[`_fmt_${type}`] = fmt;
   window[`_buildTable_${type}`] = buildTable;
 }
@@ -487,28 +562,23 @@ function applySearch(type) {
 
 function exportCsv(type) {
   const changes = window[`_changes_${type}`];
-  const cfg = window[`_cfg_${type}`];
-  const isInv = window[`_isInv_${type}`];
-  const unit = isInv ? '백만원' : '원';
-  const labelMap = { new:'신규', del:'삭제', up:'증가', down:'감소', same:'유지' };
-
-  const header = ['구분','코드','프로젝트명','고객사','영업담당','전주금액','금주금액','변동금액','상태'].join(',');
+  const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', same: '유지' };
+  const header = ['구분', '코드', '프로젝트명', '고객사', '영업담당', '전주금액', '금주금액', '변동금액', '상태'].join(',');
   const rows = changes.map(c => [
     labelMap[c.changeType], c.id,
-    `"${c.name.replace(/"/g,'""')}"`,
-    `"${c.cust.replace(/"/g,'""')}"`,
+    `"${c.name.replace(/"/g, '""')}"`,
+    `"${c.cust.replace(/"/g, '""')}"`,
     c.sales, c.prevAmt, c.currAmt, c.diff, c.status
   ].join(','));
-
-  const blob = new Blob(['\uFEFF'+header+'\n'+rows.join('\n')], {type:'text/csv;charset=utf-8'});
+  const blob = new Blob(['﻿' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `변동이력_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `변동이력_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
 }
 
 function escHtml(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 </script>
 </body>
