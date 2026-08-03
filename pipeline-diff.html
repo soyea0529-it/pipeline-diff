@@ -525,19 +525,24 @@
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
         <div class="chart-card">
-          <div class="chart-card-title">월별 실적 vs 목표</div>
+          <div class="chart-card-title">누적 실적 vs 누적 목표</div>
           <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
-          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 월별 목표선은 분기 목표를 균등 배분한 참고값입니다</div>
+          <div class="rev2-footnote">※ 분기 경계(3·6·9·12월)는 실제 목표값이며, 중간 월은 분기 목표를 균등 배분한 참고값입니다</div>
         </div>
 
         <div class="chart-card">
-          <div class="chart-card-title">분기별 목표 대비 달성률</div>
+          <div class="chart-card-title">누적 달성률 추이</div>
           <div class="chart-wrap"><canvas id="rev2-chart2"></canvas></div>
         </div>
 
         <div class="chart-card">
-          <div class="chart-card-title">누적 실적 vs 누적 목표</div>
+          <div class="chart-card-title">분기별 목표 대비 실적</div>
           <div class="chart-wrap"><canvas id="rev2-chart3"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-title">항목별 누적 구성</div>
+          <div class="chart-wrap"><canvas id="rev2-chart4"></canvas></div>
         </div>
       </div>
 
@@ -2000,7 +2005,7 @@ const SALES_QUARTERS   = ['Q1', 'Q2', 'Q3', 'Q4'];
 
 let SALES_PARSED = null; // parseSalesExcel() 결과
 let SALES_SCOPE  = '본부';
-let salesChart1 = null, salesChart2 = null, salesChart3 = null;
+let salesChart1 = null, salesChart2 = null, salesChart3 = null, salesChart4 = null;
 
 // ─── 매출 추이: 단위 변환 ─────────────────────────────────────────────────────
 // 목표 상수는 백만원 단위(÷100 = 억), 엑셀 실적은 원 단위(÷100,000,000 = 억)
@@ -2187,7 +2192,10 @@ function buildMonthlySeries(scope) {
   for (let m = 1; m <= 12; m++) {
     const isForecast = !!(sd.forecast && sd.forecast.month === m);
     const src = isForecast ? sd.forecast : sd.months[m];
-    series.push({ month: m, total: src ? src.total : null, isForecast, hasData: !!src });
+    series.push({
+      month: m, total: src ? src.total : null, isForecast, hasData: !!src,
+      cats: src ? { product: src.product, goods: src.goods, service: src.service, maint: src.maint } : null,
+    });
   }
   return series;
 }
@@ -2221,63 +2229,63 @@ function buildCumulativeActual(series) {
   });
 }
 
+// 4개 항목(제품/상품/용역/유지보수)의 월별 누적(원 단위). 마지막 실측월 이후는 null.
+function buildCumulativeByCategory(series) {
+  let last = -1;
+  series.forEach((s, i) => { if (s.hasData) last = i; });
+  const running = { product: 0, goods: 0, service: 0, maint: 0 };
+  const result  = { product: [], goods: [], service: [], maint: [] };
+  series.forEach((s, i) => {
+    if (i > last) {
+      result.product.push(null); result.goods.push(null); result.service.push(null); result.maint.push(null);
+      return;
+    }
+    running.product += (s.cats ? s.cats.product : 0);
+    running.goods    += (s.cats ? s.cats.goods   : 0);
+    running.service  += (s.cats ? s.cats.service : 0);
+    running.maint    += (s.cats ? s.cats.maint   : 0);
+    result.product.push(running.product);
+    result.goods.push(running.goods);
+    result.service.push(running.service);
+    result.maint.push(running.maint);
+  });
+  return result;
+}
+
 function rateColor(r) { return r >= 100 ? 'var(--up)' : r >= 80 ? '#f5c518' : 'var(--down)'; }
 
+// 현재 시점(마지막 실측월) 기준 누적 목표 대비 실적을 계산
 function computeSalesSummary(scope, series) {
   const annualTargetEok = millionToEok(annualTargetTotal(scope));
   const cumActualWon = buildCumulativeActual(series);
   let lastIdx = -1;
   cumActualWon.forEach((v, i) => { if (v != null) lastIdx = i; });
   const cumActualEok = lastIdx >= 0 ? wonToEok(cumActualWon[lastIdx]) : 0;
-  const annualRate = annualTargetEok > 0 ? (cumActualEok / annualTargetEok * 100) : 0;
+  const lastMonth = lastIdx >= 0 ? lastIdx + 1 : 0;
 
-  const h1TargetEok = millionToEok(quarterTargetTotal(scope, 'Q1') + quarterTargetTotal(scope, 'Q2'));
-  const h1ActualWon = series.slice(0, 6).reduce((s, m) => s + (m.hasData ? m.total : 0), 0);
-  const h1ActualEok = wonToEok(h1ActualWon);
-  const h1Rate = h1TargetEok > 0 ? (h1ActualEok / h1TargetEok * 100) : 0;
-
-  const forecastEntry = series.find(s => s.isForecast);
-  const forecastEok = forecastEntry ? wonToEok(forecastEntry.total) : null;
+  const currentCumTargetEok = lastMonth > 0 ? millionToEok(cumulativeTargetAt(scope, lastMonth)) : 0;
+  const gapEok  = cumActualEok - currentCumTargetEok;
+  const cumRate = currentCumTargetEok > 0 ? (cumActualEok / currentCumTargetEok * 100) : 0;
   const remainEok = annualTargetEok - cumActualEok;
 
-  return { annualTargetEok, cumActualEok, annualRate, h1Rate, forecastEok, remainEok };
+  return { annualTargetEok, cumActualEok, currentCumTargetEok, gapEok, cumRate, remainEok };
 }
 
 function renderSalesSummary(scope, series) {
   const s = computeSalesSummary(scope, series);
+  const gapColor = s.gapEok >= 0 ? 'var(--up)' : 'var(--down)';
+  const gapStr   = (s.gapEok >= 0 ? '+' : '') + s.gapEok.toFixed(1) + '억';
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.cumActualEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">연간 달성률</div><div class="s-value" style="color:${rateColor(s.annualRate)}">${s.annualRate.toFixed(1)}%</div></div>
-    <div class="summary-card"><div class="s-label">상반기 달성률</div><div class="s-value" style="color:${rateColor(s.h1Rate)}">${s.h1Rate.toFixed(1)}%</div></div>
-    <div class="summary-card"><div class="s-label">당월 예상액</div><div class="s-value">${s.forecastEok != null ? s.forecastEok.toFixed(1) + '억' : '-'}</div></div>
+    <div class="summary-card"><div class="s-label">현재 시점 누적 목표</div><div class="s-value">${s.currentCumTargetEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">목표 대비 격차</div><div class="s-value" style="color:${gapColor}">${gapStr}</div></div>
+    <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%</div></div>
     <div class="summary-card"><div class="s-label">잔여 필요액</div><div class="s-value">${s.remainEok.toFixed(1)}억</div></div>
   `;
 }
 
 // ─── 매출 추이: 차트 렌더링 (Chart.js) ────────────────────────────────────────
-
-// 막대 위에 값 라벨을 그리는 공용 플러그인 (dataset.showValueLabels === true 인 것만 대상)
-const salesValueLabelPlugin = {
-  id: 'salesValueLabelPlugin',
-  afterDatasetsDraw(chart) {
-    const { ctx } = chart;
-    chart.data.datasets.forEach((ds, i) => {
-      if (!ds.showValueLabels) return;
-      const meta = chart.getDatasetMeta(i);
-      meta.data.forEach((el, idx) => {
-        const val = ds.data[idx];
-        if (val == null) return;
-        ctx.save();
-        ctx.fillStyle = ds.labelColor || '#e8eaf6';
-        ctx.font = '600 11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(ds.labelFormatter(val), el.x, el.y - 8);
-        ctx.restore();
-      });
-    });
-  }
-};
 
 function buildRatioLabelPlugin(ratios) {
   return {
@@ -2312,59 +2320,126 @@ const salesChartCommonScales = {
   }
 };
 
+const SALES_QUARTER_BOUNDARY_MONTHS = [3, 6, 9, 12];
+
+// [차트 1] 누적 실적 vs 누적 목표 — 메인 차트
 function renderSalesChart1(scope, series) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
   if (salesChart1) salesChart1.destroy();
 
-  const actualData   = series.map(s => (s.hasData && !s.isForecast) ? wonToEok(s.total) : null);
-  const forecastData = series.map(s => (s.hasData &&  s.isForecast) ? wonToEok(s.total) : null);
-  const targetLine    = series.map(s => millionToEok(monthlyTargetRef(scope, s.month)));
+  const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
+  const cumActualWon = buildCumulativeActual(series);
+  const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
+  const forecastIdx  = series.findIndex(s => s.isForecast);
+  const pointRadii   = series.map(s => SALES_QUARTER_BOUNDARY_MONTHS.includes(s.month) ? 6 : 3);
 
   salesChart1 = new Chart(ctx, {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: series.map(s => s.month + '월'),
       datasets: [
-        { label: '실적', data: actualData, backgroundColor: '#4f6ef7', borderRadius: 4, barThickness: 26,
-          showValueLabels: true, labelFormatter: v => v.toFixed(1) + '억' },
-        { label: '예상', data: forecastData, backgroundColor: 'rgba(140,144,160,0.35)',
-          borderColor: '#8890b5', borderWidth: 2, borderDash: [5, 3], borderRadius: 4, barThickness: 26,
-          showValueLabels: true, labelFormatter: v => v.toFixed(1) + '억(예상)' },
-        { type: 'line', label: '목표(분기 균등 배분)', data: targetLine,
-          borderColor: '#ef4444', borderDash: [6, 3], borderWidth: 2, pointRadius: 0, tension: 0 },
+        { label: '누적 목표', data: cumTargetEok, borderColor: '#e74c3c',
+          borderWidth: 2, pointRadius: pointRadii, pointBackgroundColor: '#e74c3c',
+          tension: 0.1, fill: false },
+        { label: '누적 실적', data: cumActualEok, borderColor: '#4a9eff', backgroundColor: 'rgba(74,158,255,0.15)',
+          borderWidth: 3, pointRadius: pointRadii, pointBackgroundColor: '#4a9eff',
+          tension: 0.1, fill: true, spanGaps: false,
+          segment: { borderDash: ctx2 => (forecastIdx >= 0 && ctx2.p1DataIndex === forecastIdx) ? [6, 3] : undefined } },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       scales: salesChartCommonScales,
       plugins: {
         legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
-          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
+          callbacks: {
+            label: item => `${item.dataset.label}: ${item.formattedValue}억`,
+            afterBody: items => {
+              const idx = items[0].dataIndex;
+              const t = cumTargetEok[idx], a = cumActualEok[idx];
+              if (a == null) return [];
+              const gap = a - t;
+              const rate = t > 0 ? (a / t * 100) : 0;
+              return ['', `격차: ${gap >= 0 ? '+' : ''}${gap.toFixed(1)}억`, `달성률: ${rate.toFixed(1)}%`];
+            }
+          }
         }
       }
-    },
-    plugins: [salesValueLabelPlugin]
+    }
   });
 }
 
+// [차트 2] 누적 달성률 추이
 function renderSalesChart2(scope, series) {
   const ctx = document.getElementById('rev2-chart2').getContext('2d');
   if (salesChart2) salesChart2.destroy();
 
-  const targetsEok = SALES_QUARTERS.map(q => millionToEok(quarterTargetTotal(scope, q)));
-  const actualsEok = SALES_QUARTERS.map(q => {
-    const sum = quarterMonths(q).reduce((s, m) => {
-      const e = series[m - 1];
-      return s + (e.hasData ? e.total : 0);
-    }, 0);
-    return wonToEok(sum);
-  });
-  const ratios = SALES_QUARTERS.map((q, i) => targetsEok[i] > 0 ? (actualsEok[i] / targetsEok[i] * 100) : null);
+  const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
+  const cumActualWon = buildCumulativeActual(series);
+  const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
+  const rateSeries = cumActualEok.map((a, i) => a == null ? null : (cumTargetEok[i] > 0 ? (a / cumTargetEok[i] * 100) : null));
 
   salesChart2 = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: series.map(s => s.month + '월'),
+      datasets: [
+        { label: '누적 달성률', data: rateSeries, borderColor: '#22c55e', borderWidth: 3,
+          pointRadius: 3, tension: 0.1, fill: false, spanGaps: false,
+          segment: {
+            borderColor: ctx2 => {
+              const avg = (ctx2.p0.parsed.y + ctx2.p1.parsed.y) / 2;
+              return avg >= 100 ? '#22c55e' : '#f97316';
+            }
+          }
+        },
+        { label: '100% 기준선', data: series.map(() => 100), borderColor: '#8890b5',
+          borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: salesChartCommonScales.x,
+        y: {
+          ticks: { color: '#8890b5', font: { size: 11 }, callback: v => v + '%' },
+          grid:  { color: '#1e2136' },
+          title: { display: true, text: '%', color: '#8890b5', font: { size: 11 } },
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: '#8890b5',
+          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}%` },
+        }
+      }
+    }
+  });
+}
+
+// [차트 3] 분기별 목표 대비 실적
+function renderSalesChart3(scope, series) {
+  const ctx = document.getElementById('rev2-chart3').getContext('2d');
+  if (salesChart3) salesChart3.destroy();
+
+  const targetsEok = SALES_QUARTERS.map(q => millionToEok(quarterTargetTotal(scope, q)));
+  const actualsEok = SALES_QUARTERS.map(q => {
+    const monthsInQ = quarterMonths(q);
+    const anyData = monthsInQ.some(m => series[m - 1].hasData);
+    if (!anyData) return null; // 실적이 없는 미래 분기는 막대를 그리지 않음
+    const sum = monthsInQ.reduce((s, m) => s + (series[m - 1].hasData ? series[m - 1].total : 0), 0);
+    return wonToEok(sum);
+  });
+  const ratios = SALES_QUARTERS.map((q, i) => (targetsEok[i] > 0 && actualsEok[i] != null) ? (actualsEok[i] / targetsEok[i] * 100) : null);
+
+  salesChart3 = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: SALES_QUARTERS,
@@ -2389,31 +2464,32 @@ function renderSalesChart2(scope, series) {
   });
 }
 
-function renderSalesChart3(scope, series) {
-  const ctx = document.getElementById('rev2-chart3').getContext('2d');
-  if (salesChart3) salesChart3.destroy();
+// [차트 4] 항목별 누적 구성 (누적 영역 그래프)
+function renderSalesChart4(scope, series) {
+  const ctx = document.getElementById('rev2-chart4').getContext('2d');
+  if (salesChart4) salesChart4.destroy();
 
-  const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
-  const cumActualWon = buildCumulativeActual(series);
-  const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
-  const forecastIdx  = series.findIndex(s => s.isForecast);
+  const cats = buildCumulativeByCategory(series);
+  const toEokArr = arr => arr.map(v => v == null ? null : wonToEok(v));
 
-  salesChart3 = new Chart(ctx, {
+  salesChart4 = new Chart(ctx, {
     type: 'line',
     data: {
       labels: series.map(s => s.month + '월'),
       datasets: [
-        { label: '누적 목표', data: cumTargetEok, borderColor: '#ef4444', borderDash: [6, 3],
-          borderWidth: 2, pointRadius: 0, tension: 0.1, fill: false },
-        { label: '누적 실적', data: cumActualEok, borderColor: '#4f6ef7', borderWidth: 2,
-          pointRadius: 3, tension: 0.1, fill: false, spanGaps: false,
-          segment: { borderDash: ctx2 => (forecastIdx >= 0 && ctx2.p1DataIndex === forecastIdx) ? [6, 3] : undefined } },
+        { label: '제품',     data: toEokArr(cats.product), borderColor: '#4f6ef7', backgroundColor: 'rgba(79,110,247,0.55)',  fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
+        { label: '상품',     data: toEokArr(cats.goods),   borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.55)',   fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
+        { label: '용역',     data: toEokArr(cats.service), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.55)', fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
+        { label: '유지보수', data: toEokArr(cats.maint),   borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.55)',fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      scales: salesChartCommonScales,
+      scales: {
+        x: salesChartCommonScales.x,
+        y: { ...salesChartCommonScales.y, stacked: true },
+      },
       plugins: {
         legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
         tooltip: {
@@ -2461,6 +2537,7 @@ function renderSalesTrend() {
   renderSalesChart1(SALES_SCOPE, series);
   renderSalesChart2(SALES_SCOPE, series);
   renderSalesChart3(SALES_SCOPE, series);
+  renderSalesChart4(SALES_SCOPE, series);
 }
 
 function setSalesScope(scope) {
