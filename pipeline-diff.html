@@ -1389,7 +1389,10 @@ function buildSectionReportText(sectionId) {
   const lines = notable.map(it => {
     let detail;
     if (it.type === 'new')       detail = '신규';
-    else if (it.type === 'move') detail = `${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[it.currSection]}`;
+    else if (it.type === 'move') {
+      detail = `${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[it.currSection]}`;
+      if (Math.abs(it.diff) >= AMT_EPS) detail += ` (${it.diff >= 0 ? '▲' : '▼'}${fmtAmt(it.diff)}백만)`;
+    }
     else if (it.type === 'del')  detail = `삭제 (${invPrevLabel()} ${fmtAmt(it.prevAmt)}백만)`;
     else                         detail = `${it.diff >= 0 ? '▲' : '▼'}${fmtAmt(it.diff)}백만`;
     const amt = it.type === 'del' ? it.prevAmt : it.currAmt;
