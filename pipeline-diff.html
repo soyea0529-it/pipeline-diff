@@ -37,6 +37,9 @@
   .tab { padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; user-select: none; }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab:hover:not(.active) { color: var(--text); }
+  .tab.tab-disabled,
+  .tab.tab-disabled.active,
+  .tab.tab-disabled:hover { color: #5a5f78; border-bottom-color: transparent; }
 
   /* Main layout */
   main { padding: 32px 40px; max-width: 1400px; }
@@ -123,6 +126,10 @@
   .empty-state { text-align: center; padding: 80px 20px; color: var(--text-sub); }
   .empty-state .e-icon { font-size: 40px; margin-bottom: 14px; opacity: .5; }
   .empty-state p { font-size: 14px; }
+
+  .trend-placeholder { text-align: center; padding: 120px 20px; }
+  .trend-placeholder-title { font-size: 22px; font-weight: 700; color: #5a5f78; margin-bottom: 10px; }
+  .trend-placeholder-sub { font-size: 14px; color: #5a5f78; }
 
   .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .code { font-family: monospace; font-size: 11px; color: var(--text-sub); }
@@ -316,67 +323,18 @@
   .legend-line-dash { display: inline-block; width: 20px; border-bottom: 2px dashed; }
   .chart-wrap { position: relative; height: 400px; }
 
-  .slider-section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 20px;
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  /* ── 매출 추이 (목표 대비 실적) ────────────────────────────────────── */
+  .rev2-scope-toggle { display: flex; gap: 8px; margin-bottom: 4px; }
+  .rev2-scope-btn {
+    padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-sub); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .2s; font-family: var(--font);
   }
-  .slider-label { font-size: 12px; color: var(--text-sub); white-space: nowrap; }
-  .slider-val { font-size: 12px; color: var(--accent); font-weight: 600; min-width: 54px; text-align: center; }
-  .range-slider {
-    -webkit-appearance: none; flex: 1; min-width: 80px;
-    height: 4px; background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
-  }
-  .range-slider::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 16px; height: 16px;
-    border-radius: 50%; background: var(--accent); cursor: pointer;
-  }
-  .range-slider::-moz-range-thumb {
-    width: 16px; height: 16px; border-radius: 50%;
-    background: var(--accent); border: none; cursor: pointer;
-  }
-
-  .detail-panel {
-    background: var(--surface); border: 1.5px solid var(--accent);
-    border-radius: 10px; padding: 20px; display: none;
-  }
-  .detail-panel.open { display: block; }
-  .detail-panel-header { display: flex; align-items: center; margin-bottom: 16px; }
-  .detail-panel-title { font-size: 15px; font-weight: 700; flex: 1; }
-  .detail-close { cursor: pointer; color: var(--text-sub); font-size: 20px; line-height: 1; padding: 0 4px; }
-  .detail-close:hover { color: var(--text); }
-  .detail-section { margin-bottom: 18px; }
-  .detail-section-title {
-    font-size: 11px; font-weight: 600; color: var(--text-sub);
-    text-transform: uppercase; letter-spacing: .5px;
-    padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 10px;
-  }
-  .detail-pct-block { margin-bottom: 12px; }
-  .detail-pct-badge {
-    display: inline-block; font-size: 11px; font-weight: 700; color: #fff;
-    background: var(--accent); padding: 2px 10px; border-radius: 4px; margin-bottom: 6px;
-  }
-  .detail-item {
-    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-    background: var(--surface2); border-radius: 6px; margin-bottom: 4px;
-    font-size: 12px; flex-wrap: wrap;
-  }
-  .di-code { font-family: monospace; font-size: 10px; color: var(--accent); flex-shrink: 0; }
-  .di-name { flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .di-amount { font-weight: 600; white-space: nowrap; }
-  .di-tags { display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
-  .dtag { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; }
-  .dtag-won    { background: #0f2d1a; color: var(--up); }
-  .dtag-lost   { background: #2d0f0f; color: var(--down); }
-  .dtag-new    { background: #1d3a6e; color: var(--new); }
-  .dtag-change { background: #2a1d4a; color: #a78bfa; }
-  .dtag-year   { background: #102030; color: #60a5fa; }
-  .dtag-minor  { background: var(--surface2); color: var(--neutral); }
-
-  .rev-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .rev-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
-  .rev-table tr:last-child td { font-weight: 700; border-bottom: none; }
-  .rev-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .rev2-scope-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rev2-scope-btn:hover:not(.active) { color: var(--text); border-color: var(--accent); }
+  .rev2-summary-row { grid-template-columns: repeat(6, 1fr); }
+  .rev2-footnote { font-size: 11px; color: var(--text-sub); margin-top: 10px; }
+  @media (max-width: 900px) { .rev2-summary-row { grid-template-columns: repeat(2, 1fr); } }
 
   @media (max-width: 900px) {
     main { padding: 20px; }
@@ -402,7 +360,7 @@
     <div class="tab active" data-tab="inventory" onclick="switchTab('inventory')">인벤토리 비교</div>
     <div class="tab" data-tab="sales" onclick="switchTab('sales')">매출 비교</div>
     <div class="tab" data-tab="report" onclick="switchTab('report')">변동보고서</div>
-    <div class="tab" data-tab="pipeline-trend" onclick="switchTab('pipeline-trend')">파이프라인 추이</div>
+    <div class="tab tab-disabled" data-tab="pipeline-trend" onclick="switchTab('pipeline-trend')">파이프라인 추이 (개편중)</div>
     <div class="tab" data-tab="revenue-trend" onclick="switchTab('revenue-trend')">매출 추이</div>
   </div>
 </header>
@@ -493,8 +451,15 @@
   </div>
 
 
-  <!-- Pipeline trend tab -->
+  <!-- Pipeline trend tab — 2026-08-03부터 개편 작업으로 인해 임시로 안내 화면만 표시.
+       기존 UI는 복구 가능하도록 아래에 주석 처리로 보존. 복구 시: 이 안내 블록을 지우고
+       주석을 해제한 뒤, switchTab()의 pipeline-trend 분기에서 renderPipelineChart() 호출을 되살릴 것. -->
   <div id="tab-pipeline-trend" class="tab-content">
+    <div class="trend-placeholder">
+      <div class="trend-placeholder-title">개편 중입니다</div>
+      <div class="trend-placeholder-sub">현재 이 기능은 개선 작업이 진행 중입니다. 인벤토리 비교 탭을 이용해 주세요.</div>
+    </div>
+    <!--
     <div class="trend-layout">
 
       <div class="trend-input-section">
@@ -529,57 +494,51 @@
       </div>
 
     </div>
+    -->
   </div>
 
   <!-- Revenue trend tab -->
   <div id="tab-revenue-trend" class="tab-content">
     <div class="trend-layout">
 
-      <div class="trend-input-section">
-        <div class="trend-input-header">
-          <span class="trend-input-title">주차별 매출 데이터 입력</span>
-          <button class="trend-toggle-btn" onclick="toggleRevenueInput()">접기 / 펼치기</button>
-        </div>
-        <div id="revenue-input-body">
-          <div class="json-hint">
-            JSON 배열. 필드: <code>week</code>(YYMMDD) · <code>cumulative</code>(누적실적 백만원)
-            · <code>pipeline</code>: <code>{"100":[{"opCode":"","name":"","amount":0,"tags":["신규"]}],"90":[],"75":[],"50":[]}</code>
-            · <code>revenue</code>: <code>{"product":0,"goods":0,"service":0,"maintenance":0}</code>
-          </div>
-          <textarea class="json-textarea" id="revenue-json"
-            placeholder='[{"week":"260106","cumulative":1200,"pipeline":{"100":[{"opCode":"OP-001","name":"사업명","amount":500,"tags":["신규"]}],"90":[],"75":[],"50":[]},"revenue":{"product":300,"goods":200,"service":500,"maintenance":200}}]'></textarea>
-          <div class="btn-row" style="margin-bottom:0">
-            <button class="btn btn-primary" onclick="saveRevenueData()">저장 및 차트 갱신</button>
-            <button class="btn btn-secondary" onclick="clearRevenueData()">초기화</button>
-            <span class="status-msg" id="revenue-data-msg"></span>
-          </div>
-        </div>
+      <div class="rev2-scope-toggle">
+        <button class="rev2-scope-btn active" id="rev2-scope-hq"    onclick="setSalesScope('본부')">영업본부</button>
+        <button class="rev2-scope-btn"        id="rev2-scope-team1" onclick="setSalesScope('팀1')">공공영업1팀</button>
       </div>
 
-      <div class="slider-section">
-        <span class="slider-label">표시 구간 시작:</span>
-        <input type="range" class="range-slider" id="rev-start-sl" min="0" max="51" value="0" oninput="updateRevenueRange()">
-        <span class="slider-val" id="rev-start-val">260106</span>
-        <span class="slider-label">&nbsp;~ 끝:</span>
-        <input type="range" class="range-slider" id="rev-end-sl" min="0" max="51" value="51" oninput="updateRevenueRange()">
-        <span class="slider-val" id="rev-end-val">261229</span>
+      <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
+        <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
+        <div class="upload-icon">📊</div>
+        <div class="upload-label">주간 영업회의자료 업로드</div>
+        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
+        <div class="upload-filename" id="rev2-upload-name"></div>
       </div>
 
-      <div class="chart-card">
-        <div class="chart-card-title">분기 목표 vs 누적 실적 — 주차 포인트 클릭 시 상세 표시</div>
-        <div class="chart-legend">
-          <div class="legend-item"><span class="legend-line" style="background:#ef4444"></span>분기 목표 (누적)</div>
-          <div class="legend-item"><span class="legend-line-dash" style="border-color:#22c55e"></span>누적 실적</div>
-        </div>
-        <div class="chart-wrap"><canvas id="revenue-canvas"></canvas></div>
+      <div id="rev2-warning"></div>
+
+      <div class="empty-state" id="rev2-empty">
+        <div class="e-icon">📈</div>
+        <p>주간 영업회의자료를 업로드하면 목표 대비 매출 추이를 확인할 수 있습니다.</p>
       </div>
 
-      <div class="detail-panel" id="rev-detail-panel">
-        <div class="detail-panel-header">
-          <span class="detail-panel-title" id="rev-detail-week">주차 상세</span>
-          <span class="detail-close" onclick="closeRevDetail()">✕</span>
+      <div id="rev2-content" style="display:none">
+        <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
+
+        <div class="chart-card">
+          <div class="chart-card-title">월별 실적 vs 목표</div>
+          <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
+          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 월별 목표선은 분기 목표를 균등 배분한 참고값입니다</div>
         </div>
-        <div id="rev-detail-body"></div>
+
+        <div class="chart-card">
+          <div class="chart-card-title">분기별 목표 대비 달성률</div>
+          <div class="chart-wrap"><canvas id="rev2-chart2"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-title">누적 실적 vs 누적 목표</div>
+          <div class="chart-wrap"><canvas id="rev2-chart3"></canvas></div>
+        </div>
       </div>
 
     </div>
@@ -629,8 +588,7 @@ window.addEventListener('DOMContentLoaded', () => {
   restoreInvFiles();
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
-  document.getElementById('rev-start-val').textContent = ALL_WEEKS[0];
-  document.getElementById('rev-end-val').textContent   = ALL_WEEKS[51];
+  setupSalesUpload();
 });
 
 function buildInvUploadSlots() {
@@ -1113,8 +1071,8 @@ function switchTab(t) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + t).classList.add('active');
   if (t === 'report') generateReport();
-  if (t === 'pipeline-trend') renderPipelineChart();
-  if (t === 'revenue-trend')  renderRevenueChart();
+  // 파이프라인 추이: 개편중 안내 화면만 표시 — 복구 시 renderPipelineChart() 호출을 되살릴 것
+  if (t === 'revenue-trend') renderSalesTrend();
 }
 
 // ─── 인벤토리 비교: 유틸 ───────────────────────────────────────────────────────
@@ -1923,33 +1881,9 @@ const ALL_WEEKS = (() => {
   return weeks;
 })();
 
-// 분기 목표 누적 선형 보간 (백만원)
-// Q1: 5,253 / Q2: 14,178 / Q3: 30,101 / Q4: 82,068
-function getTargetForWeek(weekStr) {
-  const y  = 2000 + parseInt(weekStr.slice(0, 2));
-  const m  = parseInt(weekStr.slice(2, 4));
-  const dd = parseInt(weekStr.slice(4, 6));
-  const w  = new Date(y, m - 1, dd);
-  const pts = [
-    [new Date(2026,  0,  1),     0],
-    [new Date(2026,  2, 31),  5253],
-    [new Date(2026,  5, 30), 14178],
-    [new Date(2026,  8, 30), 30101],
-    [new Date(2026, 11, 31), 82068],
-  ];
-  for (let i = 0; i < pts.length - 1; i++) {
-    if (w >= pts[i][0] && w <= pts[i + 1][0]) {
-      const t = (w - pts[i][0]) / (pts[i + 1][0] - pts[i][0]);
-      return Math.round(pts[i][1] + t * (pts[i + 1][1] - pts[i][1]));
-    }
-  }
-  return 82068;
-}
-
 let pipelineChart = null;
-let revenueChart  = null;
 
-// ─── 파이프라인 추이 ──────────────────────────────────────────────────────────
+// ─── 파이프라인 추이 (개편중 — 아래 함수들은 호출되지 않지만 복구를 위해 보존) ──
 
 function loadPipelineData() {
   try { return JSON.parse(localStorage.getItem('pipeline_weekly_data') || '[]'); }
@@ -2044,176 +1978,531 @@ function renderPipelineChart() {
   });
 }
 
-// ─── 매출 추이 ────────────────────────────────────────────────────────────────
+// ─── 매출 추이: 목표 상수 ─────────────────────────────────────────────────────
+// 단위: 백만원. 본부 연간 합계 82,068백만 / 1팀 연간 합계 29,062백만 — 검증용
 
-function loadRevenueData() {
-  try { return JSON.parse(localStorage.getItem('revenue_weekly_data') || '[]'); }
-  catch (e) { return []; }
+const SALES_TARGET_2026 = {
+  본부: {
+    제품:     { Q1: 496,   Q2: 1040,  Q3: 1999,  Q4: 9782  },
+    상품:     { Q1: 1781,  Q2: 607,   Q3: 6376,  Q4: 14490 },
+    용역:     { Q1: 2959,  Q2: 7256,  Q3: 7512,  Q4: 27329 },
+    유지보수: { Q1: 17,    Q2: 22,    Q3: 36,    Q4: 366   }
+  },
+  팀1: {
+    제품:     { Q1: 415,   Q2: 536,   Q3: 600,   Q4: 4864  },
+    상품:     { Q1: 855,   Q2: 364,   Q3: 437,   Q4: 2088  },
+    용역:     { Q1: 739,   Q2: 3546,  Q3: 5136,  Q4: 9354  },
+    유지보수: { Q1: 17,    Q2: 22,    Q3: 36,    Q4: 53    }
+  }
+};
+const SALES_TEAM1_REPS = ['조영오', '양소예', '정인수'];
+const SALES_QUARTERS   = ['Q1', 'Q2', 'Q3', 'Q4'];
+
+let SALES_PARSED = null; // parseSalesExcel() 결과
+let SALES_SCOPE  = '본부';
+let salesChart1 = null, salesChart2 = null, salesChart3 = null;
+
+// ─── 매출 추이: 단위 변환 ─────────────────────────────────────────────────────
+// 목표 상수는 백만원 단위(÷100 = 억), 엑셀 실적은 원 단위(÷100,000,000 = 억)
+
+function wonToEok(v)     { return (v || 0) / 100000000; }
+function millionToEok(v) { return (v || 0) / 100; }
+
+// ─── 매출 추이: 엑셀 파싱 ─────────────────────────────────────────────────────
+
+function findRevenueSheetName(wb) {
+  const hit = wb.SheetNames.find(n => /실적|매출예상/.test(n));
+  return hit || wb.SheetNames[1] || wb.SheetNames[0];
 }
 
-function saveRevenueData() {
-  const val = document.getElementById('revenue-json').value.trim();
-  const msg = document.getElementById('revenue-data-msg');
-  if (!val) { msg.textContent = '데이터를 입력해주세요.'; return; }
-  try {
-    const arr = JSON.parse(val);
-    if (!Array.isArray(arr)) throw new Error('배열 형식이어야 합니다');
-    localStorage.setItem('revenue_weekly_data', JSON.stringify(arr));
-    msg.textContent = '✓ ' + arr.length + '건 저장됨';
-    renderRevenueChart();
-  } catch (e) { msg.textContent = '오류: ' + e.message; }
+// "월" 셀 오른쪽에 제품/상품/용역/유지관리/합계가 순서대로 있는 행을 찾아 헤더로 사용 (상단 20행 이내)
+function findHQSummaryHeader(raw) {
+  const maxScan = Math.min(20, raw.length);
+  const findAfter = (arr, fromIdx, text) => {
+    for (let i = fromIdx + 1; i < arr.length; i++) if (arr[i] === text) return i;
+    return -1;
+  };
+  for (let r = 0; r < maxScan; r++) {
+    const row = (raw[r] || []).map(v => String(v ?? '').trim());
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] !== '월') continue;
+      const idxProduct = findAfter(row, c, '제품');
+      const idxGoods    = idxProduct >= 0 ? findAfter(row, idxProduct, '상품') : -1;
+      const idxService  = idxGoods   >= 0 ? findAfter(row, idxGoods, '용역')   : -1;
+      const idxMaint    = idxService >= 0 ? findAfter(row, idxService, '유지관리') : -1;
+      const idxTotal    = idxMaint   >= 0 ? findAfter(row, idxMaint, '합계')   : -1;
+      if (idxProduct >= 0 && idxGoods >= 0 && idxService >= 0 && idxMaint >= 0 && idxTotal >= 0) {
+        return { rowIdx: r, colMonth: c, colProduct: idxProduct, colGoods: idxGoods, colService: idxService, colMaint: idxMaint, colTotal: idxTotal };
+      }
+    }
+  }
+  return null;
 }
 
-function clearRevenueData() {
-  localStorage.removeItem('revenue_weekly_data');
-  document.getElementById('revenue-data-msg').textContent = '초기화됨';
-  renderRevenueChart();
+function readAmountsFromRow(row, hdr) {
+  return {
+    product: toNum(row[hdr.colProduct]), goods: toNum(row[hdr.colGoods]),
+    service: toNum(row[hdr.colService]), maint: toNum(row[hdr.colMaint]), total: toNum(row[hdr.colTotal]),
+  };
 }
 
-function toggleRevenueInput() {
-  const el = document.getElementById('revenue-input-body');
-  el.style.display = el.style.display === 'none' ? '' : 'none';
+// A열이 "NO"인 헤더행을 찾아 1팀 상세 블록 컬럼 위치를 동적으로 파악
+function findTeamDetailHeader(raw) {
+  for (let r = 0; r < raw.length; r++) {
+    if (String(raw[r][0] ?? '').trim().toUpperCase() === 'NO') {
+      const header = raw[r];
+      const findCol = pattern => header.findIndex(v => pattern.test(String(v ?? '').trim()));
+      return {
+        rowIdx:   r,
+        code:     findCol(/프로젝트.?코드/),
+        billDate: findCol(/매출.?청구일/),
+        product:  findCol(/^제품$/),
+        goods:    findCol(/^상품$/),
+        service:  findCol(/^용역$/),
+        maint:    findCol(/유지.?관리|유지.?보수/),
+        total:    findCol(/^합계$/),
+        rep:      findCol(/매출실적영업대표/),
+      };
+    }
+  }
+  return null;
 }
 
-function updateRevenueRange() {
-  let si = parseInt(document.getElementById('rev-start-sl').value);
-  let ei = parseInt(document.getElementById('rev-end-sl').value);
-  document.getElementById('rev-start-val').textContent = ALL_WEEKS[Math.min(si, ei)];
-  document.getElementById('rev-end-val').textContent   = ALL_WEEKS[Math.max(si, ei)];
-  renderRevenueChart();
+function parseTeamDetailRows(raw, hdr) {
+  if (!hdr) return [];
+  const rows = [];
+  for (let r = hdr.rowIdx + 1; r < raw.length; r++) {
+    const row  = raw[r] || [];
+    const code = String(row[hdr.code] ?? '').trim();
+    if (!/^OP-/i.test(code)) continue; // 유효 데이터 판별
+    rows.push({
+      code, billDate: row[hdr.billDate],
+      product: toNum(row[hdr.product]), goods: toNum(row[hdr.goods]),
+      service: toNum(row[hdr.service]), maint: toNum(row[hdr.maint]), total: toNum(row[hdr.total]),
+      rep: String(row[hdr.rep] ?? '').trim(),
+    });
+  }
+  return rows;
 }
 
-function renderRevenueChart() {
-  const data = loadRevenueData();
-  const wmap = {};
-  data.forEach(d => { wmap[d.week] = d; });
+// 엑셀 날짜 셀(일련번호/문자열 모두 대응) → 월(1~12) 추출
+function excelDateToMonth(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') {
+    const d = window.XLSX && XLSX.SSF ? XLSX.SSF.parse_date_code(v) : null;
+    if (d && d.m) return d.m;
+  }
+  const s = String(v).trim();
+  let m = s.match(/^\d{4}[-\/.](\d{1,2})[-\/.]\d{1,2}/);
+  if (m) return parseInt(m[1], 10);
+  m = s.match(/^(\d{1,2})[-\/.]\d{1,2}[-\/.]\d{2,4}/);
+  if (m) return parseInt(m[1], 10);
+  m = s.match(/(\d{1,2})\s*월/);
+  if (m) return parseInt(m[1], 10);
+  return null;
+}
 
-  let si = parseInt(document.getElementById('rev-start-sl').value);
-  let ei = parseInt(document.getElementById('rev-end-sl').value);
-  if (si > ei) [si, ei] = [ei, si];
-  if (si === ei) ei = Math.min(51, si + 1);
+function aggregateTeam1ByMonth(rows) {
+  const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
+  const months = {};
+  rows.forEach(r => {
+    if (!repsNorm.includes(r.rep.replace(/\s/g, ''))) return;
+    const m = excelDateToMonth(r.billDate);
+    if (!m) return;
+    if (!months[m]) months[m] = { product: 0, goods: 0, service: 0, maint: 0, total: 0 };
+    months[m].product += r.product; months[m].goods += r.goods;
+    months[m].service += r.service; months[m].maint += r.maint; months[m].total += r.total;
+  });
+  return months;
+}
 
-  const labels  = ALL_WEEKS.slice(si, ei + 1);
-  const targets = labels.map(w => getTargetForWeek(w));
-  const actuals = labels.map(w => (wmap[w] && wmap[w].cumulative != null) ? wmap[w].cumulative : null);
+function parseSalesExcel(wb) {
+  const sheetName = findRevenueSheetName(wb);
+  const sheet = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-  const ctx = document.getElementById('revenue-canvas').getContext('2d');
-  if (revenueChart) revenueChart.destroy();
+  const hqHdr = findHQSummaryHeader(raw);
+  const hqMonths = {};
+  let forecast = null;
 
-  revenueChart = new Chart(ctx, {
-    type: 'line',
+  if (hqHdr) {
+    for (let r = hqHdr.rowIdx + 1; r < raw.length; r++) {
+      const row = raw[r] || [];
+      const colAText = String(row[0] ?? '').trim();
+      const isForecastRow = /매출\s*예상액/.test(colAText);
+      const monthCellText = String(row[hqHdr.colMonth] ?? '').trim();
+      const monthMatch = monthCellText.match(/^(\d{1,2})월$/);
+
+      if (isForecastRow) {
+        if (!forecast) { // 동일 행이 중복될 수 있으므로 처음 찾은 1개만 사용
+          let month = null;
+          const mA = colAText.match(/(\d{1,2})\s*월/);
+          if (mA) month = parseInt(mA[1], 10);
+          else if (monthMatch) month = parseInt(monthMatch[1], 10);
+          if (month) forecast = { month, ...readAmountsFromRow(row, hqHdr) };
+        }
+        continue; // 예상행은 실적 월 목록에서 제외
+      }
+      if (!monthMatch) continue; // 분기/반기 소계 등 "N월" 형태가 아닌 행은 제외
+      const month = parseInt(monthMatch[1], 10);
+      if (month >= 1 && month <= 12) hqMonths[month] = readAmountsFromRow(row, hqHdr);
+    }
+  }
+
+  const teamHdr = findTeamDetailHeader(raw);
+  const teamRows = parseTeamDetailRows(raw, teamHdr);
+  const team1Months = aggregateTeam1ByMonth(teamRows);
+
+  // 당월 예상액: 1팀 기준일 때는 본부 요약 행 값이 아니라 1팀 3명 상세행을 재집계
+  let team1Forecast = null;
+  if (forecast) {
+    const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
+    const monthRows = teamRows.filter(r => excelDateToMonth(r.billDate) === forecast.month && repsNorm.includes(r.rep.replace(/\s/g, '')));
+    const agg = monthRows.reduce((a, r) => {
+      a.product += r.product; a.goods += r.goods; a.service += r.service; a.maint += r.maint; a.total += r.total;
+      return a;
+    }, { product: 0, goods: 0, service: 0, maint: 0, total: 0 });
+    team1Forecast = { month: forecast.month, ...agg };
+  }
+
+  return {
+    sheetName, hqHeaderFound: !!hqHdr, hqMonths, forecast,
+    teamHeaderFound: !!teamHdr, teamRows, team1Months, team1Forecast,
+  };
+}
+
+// ─── 매출 추이: 목표/실적 계산 ────────────────────────────────────────────────
+
+function getScopeData(scope) {
+  if (!SALES_PARSED) return null;
+  if (scope === '본부') return { months: SALES_PARSED.hqMonths, forecast: SALES_PARSED.forecast, headerFound: SALES_PARSED.hqHeaderFound };
+  return { months: SALES_PARSED.team1Months, forecast: SALES_PARSED.team1Forecast, headerFound: SALES_PARSED.teamHeaderFound };
+}
+
+// 1~12월 전체에 대한 시리즈 생성 (예상월은 예상값으로 대체 + isForecast 플래그)
+function buildMonthlySeries(scope) {
+  const sd = getScopeData(scope);
+  if (!sd) return null;
+  const series = [];
+  for (let m = 1; m <= 12; m++) {
+    const isForecast = !!(sd.forecast && sd.forecast.month === m);
+    const src = isForecast ? sd.forecast : sd.months[m];
+    series.push({ month: m, total: src ? src.total : null, isForecast, hasData: !!src });
+  }
+  return series;
+}
+
+function monthQuarter(m) { return SALES_QUARTERS[Math.floor((m - 1) / 3)]; }
+function quarterMonths(q) { const i = SALES_QUARTERS.indexOf(q); return [i * 3 + 1, i * 3 + 2, i * 3 + 3]; }
+
+function quarterTargetTotal(scope, q) {
+  const t = SALES_TARGET_2026[scope];
+  return INV_CATS.reduce((s, cat) => s + t[cat][q], 0); // 백만원
+}
+function annualTargetTotal(scope) {
+  return SALES_QUARTERS.reduce((s, q) => s + quarterTargetTotal(scope, q), 0); // 백만원
+}
+function monthlyTargetRef(scope, m) { return quarterTargetTotal(scope, monthQuarter(m)) / 3; } // 백만원 — 분기 균등 배분 참고값
+function cumulativeTargetAt(scope, m) {
+  let s = 0;
+  for (let i = 1; i <= m; i++) s += monthlyTargetRef(scope, i);
+  return s; // 백만원
+}
+
+// 마지막 실측(예상 포함) 월까지의 누적 실적(원 단위), 그 이후는 null
+function buildCumulativeActual(series) {
+  let last = -1;
+  series.forEach((s, i) => { if (s.hasData) last = i; });
+  let running = 0;
+  return series.map((s, i) => {
+    if (i > last) return null;
+    running += (s.total || 0);
+    return running;
+  });
+}
+
+function rateColor(r) { return r >= 100 ? 'var(--up)' : r >= 80 ? '#f5c518' : 'var(--down)'; }
+
+function computeSalesSummary(scope, series) {
+  const annualTargetEok = millionToEok(annualTargetTotal(scope));
+  const cumActualWon = buildCumulativeActual(series);
+  let lastIdx = -1;
+  cumActualWon.forEach((v, i) => { if (v != null) lastIdx = i; });
+  const cumActualEok = lastIdx >= 0 ? wonToEok(cumActualWon[lastIdx]) : 0;
+  const annualRate = annualTargetEok > 0 ? (cumActualEok / annualTargetEok * 100) : 0;
+
+  const h1TargetEok = millionToEok(quarterTargetTotal(scope, 'Q1') + quarterTargetTotal(scope, 'Q2'));
+  const h1ActualWon = series.slice(0, 6).reduce((s, m) => s + (m.hasData ? m.total : 0), 0);
+  const h1ActualEok = wonToEok(h1ActualWon);
+  const h1Rate = h1TargetEok > 0 ? (h1ActualEok / h1TargetEok * 100) : 0;
+
+  const forecastEntry = series.find(s => s.isForecast);
+  const forecastEok = forecastEntry ? wonToEok(forecastEntry.total) : null;
+  const remainEok = annualTargetEok - cumActualEok;
+
+  return { annualTargetEok, cumActualEok, annualRate, h1Rate, forecastEok, remainEok };
+}
+
+function renderSalesSummary(scope, series) {
+  const s = computeSalesSummary(scope, series);
+  document.getElementById('rev2-summary-row').innerHTML = `
+    <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.cumActualEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">연간 달성률</div><div class="s-value" style="color:${rateColor(s.annualRate)}">${s.annualRate.toFixed(1)}%</div></div>
+    <div class="summary-card"><div class="s-label">상반기 달성률</div><div class="s-value" style="color:${rateColor(s.h1Rate)}">${s.h1Rate.toFixed(1)}%</div></div>
+    <div class="summary-card"><div class="s-label">당월 예상액</div><div class="s-value">${s.forecastEok != null ? s.forecastEok.toFixed(1) + '억' : '-'}</div></div>
+    <div class="summary-card"><div class="s-label">잔여 필요액</div><div class="s-value">${s.remainEok.toFixed(1)}억</div></div>
+  `;
+}
+
+// ─── 매출 추이: 차트 렌더링 (Chart.js) ────────────────────────────────────────
+
+// 막대 위에 값 라벨을 그리는 공용 플러그인 (dataset.showValueLabels === true 인 것만 대상)
+const salesValueLabelPlugin = {
+  id: 'salesValueLabelPlugin',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((ds, i) => {
+      if (!ds.showValueLabels) return;
+      const meta = chart.getDatasetMeta(i);
+      meta.data.forEach((el, idx) => {
+        const val = ds.data[idx];
+        if (val == null) return;
+        ctx.save();
+        ctx.fillStyle = ds.labelColor || '#e8eaf6';
+        ctx.font = '600 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(ds.labelFormatter(val), el.x, el.y - 8);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+function buildRatioLabelPlugin(ratios) {
+  return {
+    id: 'salesRatioLabelPlugin',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(1); // 실적 데이터셋 위에 표시
+      meta.data.forEach((el, idx) => {
+        const r = ratios[idx];
+        if (r == null) return;
+        const color = r >= 100 ? '#22c55e' : r >= 80 ? '#f5c518' : '#ef4444';
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.font = '700 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(r.toFixed(1) + '%', el.x, el.y - 10);
+        ctx.restore();
+      });
+    }
+  };
+}
+
+const salesChartCommonScales = {
+  x: {
+    ticks: { color: '#8890b5', font: { size: 11 } },
+    grid:  { color: '#1e2136' },
+  },
+  y: {
+    ticks: { color: '#8890b5', font: { size: 11 }, callback: v => v.toFixed(0) + '억' },
+    grid:  { color: '#1e2136' },
+    title: { display: true, text: '억원', color: '#8890b5', font: { size: 11 } },
+  }
+};
+
+function renderSalesChart1(scope, series) {
+  const ctx = document.getElementById('rev2-chart1').getContext('2d');
+  if (salesChart1) salesChart1.destroy();
+
+  const actualData   = series.map(s => (s.hasData && !s.isForecast) ? wonToEok(s.total) : null);
+  const forecastData = series.map(s => (s.hasData &&  s.isForecast) ? wonToEok(s.total) : null);
+  const targetLine    = series.map(s => millionToEok(monthlyTargetRef(scope, s.month)));
+
+  salesChart1 = new Chart(ctx, {
+    type: 'bar',
     data: {
-      labels,
+      labels: series.map(s => s.month + '월'),
       datasets: [
-        {
-          label: '분기 목표 (누적)',
-          data: targets,
-          borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.05)',
-          tension: 0.1, pointRadius: 3, pointHoverRadius: 5, fill: false, borderWidth: 2,
-        },
-        {
-          label: '누적 실적',
-          data: actuals,
-          borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.1)',
-          borderDash: [6, 3],
-          tension: 0.2, pointRadius: 5, pointHoverRadius: 9, fill: false, spanGaps: false, borderWidth: 2,
-        },
+        { label: '실적', data: actualData, backgroundColor: '#4f6ef7', borderRadius: 4, barThickness: 26,
+          showValueLabels: true, labelFormatter: v => v.toFixed(1) + '억' },
+        { label: '예상', data: forecastData, backgroundColor: 'rgba(140,144,160,0.35)',
+          borderColor: '#8890b5', borderWidth: 2, borderDash: [5, 3], borderRadius: 4, barThickness: 26,
+          showValueLabels: true, labelFormatter: v => v.toFixed(1) + '억(예상)' },
+        { type: 'line', label: '목표(분기 균등 배분)', data: targetLine,
+          borderColor: '#ef4444', borderDash: [6, 3], borderWidth: 2, pointRadius: 0, tension: 0 },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      onClick: (evt, _els, chart) => {
-        const items = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, false);
-        if (!items.length) return;
-        const week = labels[items[0].index];
-        showRevDetail(week, wmap[week]);
-      },
-      scales: {
-        x: {
-          ticks: { color: '#8890b5', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 18 },
-          grid:  { color: '#1e2136' },
-        },
-        y: {
-          ticks: {
-            color: '#8890b5', font: { size: 11 },
-            callback: v => v >= 10000 ? (v / 10000).toFixed(1) + '억' : v >= 1000 ? (v / 1000).toFixed(0) + '천M' : v + 'M',
-          },
-          grid:  { color: '#1e2136' },
-          title: { display: true, text: '백만원', color: '#8890b5', font: { size: 11 } },
-        }
-      },
+      scales: salesChartCommonScales,
       plugins: {
         legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
-          callbacks: { title: items => '📅 주차: ' + items[0].label }
+          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
+        }
+      }
+    },
+    plugins: [salesValueLabelPlugin]
+  });
+}
+
+function renderSalesChart2(scope, series) {
+  const ctx = document.getElementById('rev2-chart2').getContext('2d');
+  if (salesChart2) salesChart2.destroy();
+
+  const targetsEok = SALES_QUARTERS.map(q => millionToEok(quarterTargetTotal(scope, q)));
+  const actualsEok = SALES_QUARTERS.map(q => {
+    const sum = quarterMonths(q).reduce((s, m) => {
+      const e = series[m - 1];
+      return s + (e.hasData ? e.total : 0);
+    }, 0);
+    return wonToEok(sum);
+  });
+  const ratios = SALES_QUARTERS.map((q, i) => targetsEok[i] > 0 ? (actualsEok[i] / targetsEok[i] * 100) : null);
+
+  salesChart2 = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: SALES_QUARTERS,
+      datasets: [
+        { label: '목표', data: targetsEok, backgroundColor: '#ef4444', borderRadius: 4 },
+        { label: '실적', data: actualsEok, backgroundColor: '#4f6ef7', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: salesChartCommonScales,
+      plugins: {
+        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: '#8890b5',
+          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
+        }
+      }
+    },
+    plugins: [buildRatioLabelPlugin(ratios)]
+  });
+}
+
+function renderSalesChart3(scope, series) {
+  const ctx = document.getElementById('rev2-chart3').getContext('2d');
+  if (salesChart3) salesChart3.destroy();
+
+  const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
+  const cumActualWon = buildCumulativeActual(series);
+  const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
+  const forecastIdx  = series.findIndex(s => s.isForecast);
+
+  salesChart3 = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: series.map(s => s.month + '월'),
+      datasets: [
+        { label: '누적 목표', data: cumTargetEok, borderColor: '#ef4444', borderDash: [6, 3],
+          borderWidth: 2, pointRadius: 0, tension: 0.1, fill: false },
+        { label: '누적 실적', data: cumActualEok, borderColor: '#4f6ef7', borderWidth: 2,
+          pointRadius: 3, tension: 0.1, fill: false, spanGaps: false,
+          segment: { borderDash: ctx2 => (forecastIdx >= 0 && ctx2.p1DataIndex === forecastIdx) ? [6, 3] : undefined } },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: salesChartCommonScales,
+      plugins: {
+        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
+          titleColor: '#e8eaf6', bodyColor: '#8890b5',
+          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
         }
       }
     }
   });
 }
 
-function showRevDetail(week, d) {
-  const panel = document.getElementById('rev-detail-panel');
-  document.getElementById('rev-detail-week').textContent = '📅 ' + week + ' 주차 상세';
+const SALES_EMPTY_MSG_DEFAULT = '주간 영업회의자료를 업로드하면 목표 대비 매출 추이를 확인할 수 있습니다.';
 
-  if (!d) {
-    document.getElementById('rev-detail-body').innerHTML =
-      '<p style="color:var(--text-sub);text-align:center;padding:24px">해당 주차 데이터 없음</p>';
-    panel.classList.add('open');
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+function renderSalesTrend() {
+  const empty   = document.getElementById('rev2-empty');
+  const content = document.getElementById('rev2-content');
+  const warnEl  = document.getElementById('rev2-warning');
+  warnEl.innerHTML = '';
+  empty.querySelector('p').textContent = SALES_EMPTY_MSG_DEFAULT;
+
+  if (!SALES_PARSED) {
+    empty.style.display = '';
+    content.style.display = 'none';
     return;
   }
 
-  const tagCls = t =>
-    t === '수주'     ? 'dtag-won'  :
-    t === '실주'     ? 'dtag-lost' :
-    t === '신규'     ? 'dtag-new'  :
-    t === '확도변경' ? 'dtag-change' :
-    t === '연도이동' ? 'dtag-year' : 'dtag-minor';
+  const sd = getScopeData(SALES_SCOPE);
 
-  const pipeHtml = ['100', '90', '75', '50'].map(pct => {
-    const items = ((d.pipeline || {})[pct] || []);
-    if (!items.length) return '';
-    const rows = items.map(it => `
-      <div class="detail-item">
-        <span class="di-code">${escHtml(it.opCode || '')}</span>
-        <span class="di-name">${escHtml(it.name || '')}</span>
-        <span class="di-amount">${it.amount != null ? it.amount + 'M' : '-'}</span>
-        <div class="di-tags">${(it.tags || []).map(t => `<span class="dtag ${tagCls(t)}">${escHtml(t)}</span>`).join('')}</div>
-      </div>`).join('');
-    return `<div class="detail-pct-block"><span class="detail-pct-badge">${pct}%</span>${rows}</div>`;
-  }).join('');
+  if (SALES_SCOPE === '본부' && !sd.headerFound) {
+    warnEl.innerHTML = `<div class="inv-bulk-warn">⚠ 상단 요약표를 찾지 못했습니다. 엑셀 구조를 확인해주세요.</div>`;
+  }
+  if (SALES_SCOPE === '팀1' && Object.keys(sd.months).length === 0 && !sd.forecast) {
+    empty.querySelector('p').textContent = '해당 조건의 매출 데이터가 없습니다.';
+    empty.style.display = '';
+    content.style.display = 'none';
+    return;
+  }
 
-  const rev   = d.revenue || {};
-  const total = (rev.product || 0) + (rev.goods || 0) + (rev.service || 0) + (rev.maintenance || 0);
-  const revHtml = `
-    <table class="rev-table">
-      <tr><td>제품</td><td>${rev.product || 0}M</td></tr>
-      <tr><td>상품</td><td>${rev.goods || 0}M</td></tr>
-      <tr><td>용역</td><td>${rev.service || 0}M</td></tr>
-      <tr><td>유지보수</td><td>${rev.maintenance || 0}M</td></tr>
-      <tr><td>합계</td><td>${total}M</td></tr>
-    </table>`;
+  empty.style.display = 'none';
+  content.style.display = '';
 
-  document.getElementById('rev-detail-body').innerHTML = `
-    <div class="detail-section">
-      <div class="detail-section-title">사업기회 현황</div>
-      ${pipeHtml || '<p style="color:var(--text-sub);font-size:12px;padding:8px 0">항목 없음</p>'}
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">매출 현황</div>
-      ${revHtml}
-    </div>`;
-
-  panel.classList.add('open');
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const series = buildMonthlySeries(SALES_SCOPE);
+  renderSalesSummary(SALES_SCOPE, series);
+  renderSalesChart1(SALES_SCOPE, series);
+  renderSalesChart2(SALES_SCOPE, series);
+  renderSalesChart3(SALES_SCOPE, series);
 }
 
-function closeRevDetail() {
-  document.getElementById('rev-detail-panel').classList.remove('open');
+function setSalesScope(scope) {
+  SALES_SCOPE = scope;
+  document.getElementById('rev2-scope-hq').classList.toggle('active', scope === '본부');
+  document.getElementById('rev2-scope-team1').classList.toggle('active', scope === '팀1');
+  renderSalesTrend();
+}
+
+function processSalesFile(file) {
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type: 'binary' });
+    SALES_PARSED = parseSalesExcel(wb);
+    document.getElementById('rev2-upload-name').textContent = file.name;
+    document.getElementById('rev2-upload-card').classList.add('has-file');
+    renderSalesTrend();
+  };
+  reader.readAsBinaryString(file);
+}
+
+function setupSalesUpload() {
+  const card  = document.getElementById('rev2-upload-card');
+  const input = document.getElementById('rev2-upload-input');
+  card.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) processSalesFile(f);
+    e.target.value = '';
+  });
+  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); });
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) processSalesFile(f);
+  });
 }
 </script>
 </body>
