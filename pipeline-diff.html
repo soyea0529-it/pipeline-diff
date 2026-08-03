@@ -155,6 +155,34 @@
   .inv-slot.has-file .inv-slot-name { color: var(--text); }
   .inv-slot-rows  { flex-shrink: 0; font-size: 11px; color: var(--text-sub); }
 
+  /* ── 인벤토리 비교: 일괄 업로드 ────────────────────────────────────── */
+  .inv-bulk-zone {
+    border: 1.5px dashed var(--border); border-radius: 10px; background: var(--surface);
+    padding: 16px; text-align: center; cursor: pointer; transition: all .2s; margin-bottom: 10px; user-select: none;
+  }
+  .inv-bulk-zone:hover { border-color: var(--accent); background: var(--surface2); }
+  .inv-bulk-zone.drag-over { border-color: var(--accent); background: rgba(79,110,247,0.12); transform: scale(1.005); }
+  .inv-bulk-icon  { font-size: 20px; margin-bottom: 6px; }
+  .inv-bulk-label { font-size: 13px; font-weight: 700; color: var(--text); }
+  .inv-bulk-hint  { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+
+  .inv-bulk-msg  { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .inv-bulk-warn { font-size: 12px; color: var(--del); background: #3d1f0f; border-radius: 6px; padding: 6px 10px; }
+  .inv-bulk-dup  { font-size: 12px; color: var(--down); background: #2d0f0f; border-radius: 6px; padding: 6px 10px; }
+  .inv-bulk-unrec {
+    font-size: 12px; color: var(--del); background: #3d1f0f; border-radius: 6px;
+    padding: 6px 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .inv-bulk-unrec select {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 6px; font-size: 11px; font-family: var(--font);
+  }
+  .inv-bulk-ok     { font-size: 12px; color: var(--up); background: #0f2d1a; border-radius: 6px; padding: 6px 10px; font-weight: 700; }
+  .inv-bulk-ignore { font-size: 12px; color: var(--text-sub); background: var(--surface2); border-radius: 6px; padding: 6px 10px; }
+
+  .inv-period-info { font-size: 13px; color: var(--text-sub); margin-bottom: 16px; }
+  .inv-period-warn  { color: var(--del); font-weight: 700; }
+
   /* ── 인벤토리 비교: 분석 결과 ──────────────────────────────────────── */
   .inv-summary-line {
     font-size: 14px; font-weight: 600; margin-bottom: 14px; padding: 12px 16px;
@@ -386,13 +414,28 @@
     <div class="inv-upload-wrap">
       <div>
         <div class="inv-upload-col-title">전주 인벤토리 (구간별 선택 업로드)</div>
+        <div class="inv-bulk-zone" id="inv-bulk-zone-prev">
+          <input type="file" accept=".xlsx,.xls" multiple id="inv-bulk-input-prev" style="display:none">
+          <div class="inv-bulk-icon">📦</div>
+          <div class="inv-bulk-label">전주 파일 7개 한번에 올리기</div>
+          <div class="inv-bulk-hint">드래그하거나 클릭하여 여러 파일 선택</div>
+        </div>
+        <div class="inv-bulk-msg" id="inv-bulk-msg-prev"></div>
         <div class="inv-slot-list" id="inv-slots-prev"></div>
       </div>
       <div>
         <div class="inv-upload-col-title">금주 인벤토리 (구간별 선택 업로드)</div>
+        <div class="inv-bulk-zone" id="inv-bulk-zone-curr">
+          <input type="file" accept=".xlsx,.xls" multiple id="inv-bulk-input-curr" style="display:none">
+          <div class="inv-bulk-icon">📦</div>
+          <div class="inv-bulk-label">금주 파일 7개 한번에 올리기</div>
+          <div class="inv-bulk-hint">드래그하거나 클릭하여 여러 파일 선택</div>
+        </div>
+        <div class="inv-bulk-msg" id="inv-bulk-msg-curr"></div>
         <div class="inv-slot-list" id="inv-slots-curr"></div>
       </div>
     </div>
+    <div class="inv-period-info" id="inv-period-info"></div>
     <div class="btn-row">
       <button class="btn btn-primary" id="inv-compare-btn" onclick="runInvCompare()" disabled>변동이력 분석</button>
       <button class="btn btn-secondary" onclick="resetInvAll()">초기화</button>
@@ -574,11 +617,15 @@ const DATA = { sal: {} };
 const INV_FILES  = { prev: {}, curr: {} };
 // 분석 결과: { bySection: { '100': { rows, inflow, outflow, brandNew, fullyDeleted }, ... } }
 let   INV_RESULT = null;
+// 일괄 업로드: 마지막 배치 결과 { prev: {duplicates,unrecognized,unrecognizedFiles,ignoredCount,successCount}, curr: {...} }
+const INV_LAST_BULK = { prev: null, curr: null };
 
 // ─── Page init ────────────────────────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', () => {
   buildInvUploadSlots();
+  setupInvBulkZone('prev');
+  setupInvBulkZone('curr');
   restoreInvFiles();
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
@@ -627,21 +674,31 @@ function setupInvSlot(card, week, sectionId) {
   });
 }
 
+// 실제 파싱 + INV_FILES 반영 + 슬롯 UI 갱신까지 처리하는 공용 로더 (개별 슬롯/일괄 업로드 공용)
+function loadInvSectionFile(file, week, sectionId) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const wb   = XLSX.read(ev.target.result, { type: 'binary' });
+      const rows = parseInventorySheet(wb);
+      INV_FILES[week][sectionId] = { rows, fileName: file.name };
+      applyInvSlotUI(week, sectionId, file.name, rows.length);
+      resolve(rows);
+    };
+    reader.onerror = reject;
+    reader.readAsBinaryString(file);
+  });
+}
+
 function processInvFile(file, week, sectionId) {
   if (!file.name.match(/\.(xlsx|xls)$/i)) {
     alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
     return;
   }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const wb   = XLSX.read(ev.target.result, { type: 'binary' });
-    const rows = parseInventorySheet(wb);
-    INV_FILES[week][sectionId] = { rows, fileName: file.name };
-    applyInvSlotUI(week, sectionId, file.name, rows.length);
+  loadInvSectionFile(file, week, sectionId).then(() => {
     updateInvCompareBtn();
     saveInvFiles();
-  };
-  reader.readAsBinaryString(file);
+  });
 }
 
 function applyInvSlotUI(week, sectionId, fileName, rowCount) {
@@ -654,6 +711,198 @@ function updateInvCompareBtn() {
   const anyPrev = Object.keys(INV_FILES.prev).length > 0;
   const anyCurr = Object.keys(INV_FILES.curr).length > 0;
   document.getElementById('inv-compare-btn').disabled = !(anyPrev && anyCurr);
+  renderInvBulkMsg('prev');
+  renderInvBulkMsg('curr');
+  renderInvPeriodInfo();
+}
+
+// ─── 인벤토리 비교: 일괄 업로드 (파일명 → 구간 자동 배정) ─────────────────────
+// 매칭 순서: 100 → 50%F → 50%U → 90 → 75 → 25 → 0 (긴 키워드 우선, 마지막 언더바 뒤 조각만 확인)
+
+function detectSectionFromFilename(filename) {
+  const base = filename.replace(/\.(xlsx|xls)$/i, '');
+  const parts = base.split('_');
+  const key = (parts[parts.length - 1] || '').trim().toUpperCase();
+  const rules = [
+    { id: '100', test: k => /^100%?$/.test(k) },
+    { id: '50f', test: k => /^50%?\(?F\)?$/.test(k) },
+    { id: '50u', test: k => /^50%?\(?U\)?$/.test(k) },
+    { id: '90',  test: k => /^90%?$/.test(k) },
+    { id: '75',  test: k => /^75%?$/.test(k) },
+    { id: '25',  test: k => /^25%?$/.test(k) },
+    { id: '0',   test: k => /^0%?$/.test(k) },
+  ];
+  const hit = rules.find(r => r.test(key));
+  return hit ? hit.id : null;
+}
+
+function setupInvBulkZone(week) {
+  const zone  = document.getElementById(`inv-bulk-zone-${week}`);
+  const input = document.getElementById(`inv-bulk-input-${week}`);
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    if (e.target.files.length) handleInvBulkFiles(week, e.target.files);
+    e.target.value = '';
+  });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleInvBulkFiles(week, e.dataTransfer.files);
+  });
+}
+
+async function handleInvBulkFiles(week, fileList) {
+  const allFiles  = Array.from(fileList);
+  const files     = allFiles.filter(f => /\.(xlsx|xls)$/i.test(f.name));
+  const ignoredCount = allFiles.length - files.length;
+
+  const bySection = {};
+  const unrecognizedFiles = [];
+  files.forEach(f => {
+    const sectionId = detectSectionFromFilename(f.name);
+    if (!sectionId) { unrecognizedFiles.push(f); return; }
+    (bySection[sectionId] = bySection[sectionId] || []).push(f);
+  });
+
+  const duplicates = [];
+  let successCount = 0;
+  for (const [sectionId, list] of Object.entries(bySection)) {
+    if (list.length > 1) duplicates.push({ sectionId, files: list.map(f => f.name) });
+    await loadInvSectionFile(list[0], week, sectionId); // 나중 파일로 덮어쓰지 않고 첫 파일만 반영
+    successCount++;
+  }
+
+  INV_LAST_BULK[week] = {
+    duplicates,
+    unrecognized: unrecognizedFiles.map(f => f.name),
+    unrecognizedFiles,
+    ignoredCount,
+    successCount,
+  };
+
+  updateInvCompareBtn();
+  saveInvFiles();
+}
+
+function assignUnrecognizedInvFile(week, index, sectionId) {
+  if (!sectionId) return;
+  const last = INV_LAST_BULK[week];
+  if (!last) return;
+  const file = last.unrecognizedFiles[index];
+  if (!file) return;
+  loadInvSectionFile(file, week, sectionId).then(() => {
+    last.unrecognized.splice(index, 1);
+    last.unrecognizedFiles.splice(index, 1);
+    updateInvCompareBtn();
+    saveInvFiles();
+  });
+}
+
+function renderInvBulkMsg(week) {
+  const el = document.getElementById(`inv-bulk-msg-${week}`);
+  if (!el) return;
+  const weekLabel = week === 'prev' ? '전주' : '금주';
+  const parts = [];
+
+  const dinfo = getWeekDateInfo(week);
+  if (dinfo.mismatch) {
+    parts.push(`<div class="inv-bulk-warn">${weekLabel} 파일의 날짜가 일치하지 않습니다: ${dinfo.values.join(', ')}</div>`);
+  }
+
+  const last = INV_LAST_BULK[week];
+  if (last) {
+    if (last.ignoredCount > 0) {
+      parts.push(`<div class="inv-bulk-ignore">⚠ xlsx/xls가 아닌 파일 ${last.ignoredCount}개는 무시되었습니다.</div>`);
+    }
+    last.duplicates.forEach(d => {
+      parts.push(`<div class="inv-bulk-dup">중복 배정: ${INV_SECTION_LABEL[d.sectionId]} 구간에 ${d.files.map(escHtml).join(', ')} — 나중 파일은 무시됨</div>`);
+    });
+    last.unrecognized.forEach((fname, i) => {
+      parts.push(`
+        <div class="inv-bulk-unrec">
+          <span>구간을 인식하지 못했습니다: ${escHtml(fname)}</span>
+          <select onchange="assignUnrecognizedInvFile('${week}', ${i}, this.value)">
+            <option value="">구간 선택…</option>
+            ${INV_SECTIONS.map(s => `<option value="${s.id}">${s.label}</option>`).join('')}
+          </select>
+        </div>`);
+    });
+    if (last.successCount === INV_SECTIONS.length && last.duplicates.length === 0 && last.unrecognized.length === 0) {
+      parts.push(`<div class="inv-bulk-ok">✓ 7개 구간 모두 배정 완료</div>`);
+    }
+  }
+
+  el.innerHTML = parts.join('');
+}
+
+// ─── 인벤토리 비교: 파일명 날짜 인식 & 비교 기간 표시 ─────────────────────────
+// 파일명의 첫 번째 언더바 앞 조각이 MMDD 4자리 숫자면 날짜로 인식한다.
+
+function parseFileDateMMDD(filename) {
+  const base  = filename.replace(/\.(xlsx|xls)$/i, '');
+  const first = base.split('_')[0] || '';
+  if (!/^\d{4}$/.test(first)) return null;
+  const month = parseInt(first.slice(0, 2), 10);
+  const day   = parseInt(first.slice(2, 4), 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { raw: first, month, day };
+}
+
+function getWeekDateInfo(week) {
+  const dates = INV_SECTIONS
+    .map(s => INV_FILES[week][s.id] && INV_FILES[week][s.id].fileName)
+    .filter(Boolean)
+    .map(parseFileDateMMDD)
+    .filter(Boolean);
+  if (!dates.length) return { date: null, mismatch: false, values: [] };
+  const uniqueRaw = [...new Set(dates.map(d => d.raw))];
+  return { date: dates[0], mismatch: uniqueRaw.length > 1, values: uniqueRaw };
+}
+
+// 두 주차의 날짜를 비교해 간격을 계산한다. 연도는 앱 전역과 동일하게 2026년 기준(ALL_WEEKS와 동일).
+function getComparePeriodInfo() {
+  const prevInfo = getWeekDateInfo('prev');
+  const currInfo = getWeekDateInfo('curr');
+  if (!prevInfo.date || !currInfo.date) return null;
+  const y  = 2026;
+  const pd = new Date(y, prevInfo.date.month - 1, prevInfo.date.day);
+  const cd = new Date(y, currInfo.date.month - 1, currInfo.date.day);
+  const diffDays = Math.round((cd - pd) / 86400000);
+  return { prevDate: prevInfo.date, currDate: currInfo.date, diffDays };
+}
+
+function invPrevLabel() {
+  const info = getComparePeriodInfo();
+  if (!info) return '전주';
+  if (info.diffDays === 7)  return '전주';
+  if (info.diffDays === 14) return '2주 전';
+  return '이전 회차';
+}
+
+function invCompareLabel() { return invPrevLabel() + ' 대비'; }
+
+function renderInvPeriodInfo() {
+  const el = document.getElementById('inv-period-info');
+  if (!el) return;
+  const info = getComparePeriodInfo();
+  if (!info) { el.innerHTML = ''; return; }
+  const fmtDate = d => `${d.month}월 ${d.day}일`;
+  let intervalLabel;
+  if (info.diffDays === 7)       intervalLabel = '1주 간격';
+  else if (info.diffDays === 14) intervalLabel = '2주 간격';
+  else                            intervalLabel = `${info.diffDays}일 간격`;
+  const warnCls = info.diffDays !== 7 ? ' inv-period-warn' : '';
+  el.innerHTML = `비교 기간: ${fmtDate(info.prevDate)} → ${fmtDate(info.currDate)} <span class="${warnCls.trim()}">(${intervalLabel})</span>`;
+}
+
+// 엑셀 파일명용 날짜 문자열(MMDD). 인식 실패 시 오늘 날짜로 대체.
+function invFilenameDatePart(week) {
+  const info = getWeekDateInfo(week);
+  if (info.date) return info.date.raw;
+  const today = new Date();
+  return String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
 }
 
 // ─── 인벤토리 비교: 업로드 데이터 저장/복원 (localStorage) ────────────────────
@@ -694,6 +943,8 @@ function resetInvAll() {
   INV_FILES.prev = {};
   INV_FILES.curr = {};
   INV_RESULT = null;
+  INV_LAST_BULK.prev = null;
+  INV_LAST_BULK.curr = null;
   localStorage.removeItem(INV_STORAGE_KEY);
   INV_SECTIONS.forEach(s => {
     ['prev', 'curr'].forEach(week => {
@@ -708,6 +959,9 @@ function resetInvAll() {
   document.getElementById('inv-compare-btn').disabled = true;
   document.getElementById('inv-excel-btn').disabled = true;
   document.getElementById('inv-status').textContent = '';
+  document.getElementById('inv-bulk-msg-prev').innerHTML = '';
+  document.getElementById('inv-bulk-msg-curr').innerHTML = '';
+  document.getElementById('inv-period-info').innerHTML = '';
   document.getElementById('inv-analysis-area').innerHTML = `
     <div class="empty-state">
       <div class="e-icon">📊</div>
@@ -983,8 +1237,8 @@ function buildInvSectionHtml(sectionId) {
   const totalDiff = currTotal - prevTotal;
 
   const summaryLine = Math.abs(totalDiff) < AMT_EPS
-    ? `<div class="inv-summary-line">전주 대비 <b>변동 없음</b> &nbsp;|&nbsp; 금주 합계 ${fmtAmt(currTotal)}백만</div>`
-    : `<div class="inv-summary-line">전주 대비 ${totalDiff > 0 ? '▲' : '▼'} <b class="${totalDiff > 0 ? 'diff-up' : 'diff-down'}">${fmtAmt(Math.abs(totalDiff))}백만</b> &nbsp;|&nbsp; 전주 ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만</div>`;
+    ? `<div class="inv-summary-line">${invCompareLabel()} <b>변동 없음</b> &nbsp;|&nbsp; 금주 합계 ${fmtAmt(currTotal)}백만</div>`
+    : `<div class="inv-summary-line">${invCompareLabel()} ${totalDiff > 0 ? '▲' : '▼'} <b class="${totalDiff > 0 ? 'diff-up' : 'diff-down'}">${fmtAmt(Math.abs(totalDiff))}백만</b> &nbsp;|&nbsp; ${invPrevLabel()} ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만</div>`;
 
   return summaryLine + buildMoveBlock(sectionId, sec) + buildInvTable(sectionId, sec);
 }
@@ -995,7 +1249,7 @@ function amtChangeNote(prevAmt, currAmt, isNew, isDel) {
   const diff = currAmt - prevAmt;
   if (Math.abs(diff) < AMT_EPS) return `${fmtAmt(currAmt)}백만원 (변동없음)`;
   const dir = diff > 0 ? '증가' : '감소';
-  return `전주 ${fmtAmt(prevAmt)}백만원 → 금주 ${fmtAmt(currAmt)}백만원(${fmtAmt(Math.abs(diff))}백만원 ${dir})`;
+  return `${invPrevLabel()} ${fmtAmt(prevAmt)}백만원 → 금주 ${fmtAmt(currAmt)}백만원(${fmtAmt(Math.abs(diff))}백만원 ${dir})`;
 }
 
 function moveLine(icon, cls, label, it, fromSection, toSection) {
@@ -1038,7 +1292,7 @@ function buildRemark(it) {
     const toLabel   = INV_SECTION_LABEL[it.currSection];
     if (Math.abs(it.diff) < AMT_EPS) return `${fromLabel} → ${toLabel} 구간이동`;
     const dir = it.diff > 0 ? '증가' : '감소';
-    return `전주 ${fmtAmt(it.prevAmt)}백만원 → 금주 ${fmtAmt(it.currAmt)}백만원(${fmtAmt(Math.abs(it.diff))}백만원 ${dir})`;
+    return `${invPrevLabel()} ${fmtAmt(it.prevAmt)}백만원 → 금주 ${fmtAmt(it.currAmt)}백만원(${fmtAmt(Math.abs(it.diff))}백만원 ${dir})`;
   }
   // changed: 변한 카테고리만 나열
   const parts = [];
@@ -1129,14 +1383,14 @@ function buildSectionReportText(sectionId) {
   const outflowLines = sec.outflow.map(it =>
     ` - ${it.code} ${it.name} / ${fmtAmt(it.prevAmt)}백만 / 유출: ${label} → ${INV_SECTION_LABEL[it.currSection]}`);
 
-  if (notable.length === 0 && outflowLines.length === 0) return `[${label}] 전주 대비 변동 없음`;
+  if (notable.length === 0 && outflowLines.length === 0) return `[${label}] ${invCompareLabel()} 변동 없음`;
 
-  const header = `[${label}] 전주 대비 ${diff >= 0 ? '▲' : '▼'}${fmtAmt(Math.abs(diff))}백만`;
+  const header = `[${label}] ${invCompareLabel()} ${diff >= 0 ? '▲' : '▼'}${fmtAmt(Math.abs(diff))}백만`;
   const lines = notable.map(it => {
     let detail;
     if (it.type === 'new')       detail = '신규';
     else if (it.type === 'move') detail = `${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[it.currSection]}`;
-    else if (it.type === 'del')  detail = `삭제 (전주 ${fmtAmt(it.prevAmt)}백만)`;
+    else if (it.type === 'del')  detail = `삭제 (${invPrevLabel()} ${fmtAmt(it.prevAmt)}백만)`;
     else                         detail = `${it.diff >= 0 ? '▲' : '▼'}${fmtAmt(it.diff)}백만`;
     const amt = it.type === 'del' ? it.prevAmt : it.currAmt;
     return ` - ${it.code} ${it.name} / ${fmtAmt(amt)}백만 / ${detail}`;
@@ -1167,17 +1421,6 @@ function copyReportDraft(btn) {
 
 // ─── 인벤토리 비교: 엑셀 다운로드 (ExcelJS) ────────────────────────────────────
 
-function guessInvDate(week) {
-  for (const s of INV_SECTIONS) {
-    const f = INV_FILES[week][s.id];
-    if (f && f.fileName) {
-      const m = f.fileName.match(/(\d{6,8})/);
-      if (m) return m[1];
-    }
-  }
-  return week === 'prev' ? '전주' : '금주';
-}
-
 async function downloadInvExcel() {
   if (!INV_RESULT) return;
 
@@ -1203,8 +1446,8 @@ async function downloadInvExcel() {
     const currTotal = invSectionCurrTotal(s.id);
     const diff = currTotal - prevTotal;
     const summaryText = Math.abs(diff) < AMT_EPS
-      ? '전주 대비 변동 없음'
-      : `전주 대비 ${diff > 0 ? '▲' : '▼'} ${fmtAmt(Math.abs(diff))}백만 (전주 ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만)`;
+      ? `${invCompareLabel()} 변동 없음`
+      : `${invCompareLabel()} ${diff > 0 ? '▲' : '▼'} ${fmtAmt(Math.abs(diff))}백만 (${invPrevLabel()} ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만)`;
     ws.getCell(`A${rIdx}`).value = summaryText;
     ws.mergeCells(`A${rIdx}:M${rIdx}`);
     ws.getCell(`A${rIdx}`).font = { bold: true };
@@ -1292,7 +1535,7 @@ async function downloadInvExcel() {
   const blob = new Blob([buf], { type: 'application/octet-stream' });
   const a    = document.createElement('a');
   a.href     = URL.createObjectURL(blob);
-  a.download = `인벤토리_변동비교_${guessInvDate('prev')}_${guessInvDate('curr')}.xlsx`;
+  a.download = `인벤토리_변동비교_${invFilenameDatePart('prev')}_${invFilenameDatePart('curr')}.xlsx`;
   a.click();
 }
 
