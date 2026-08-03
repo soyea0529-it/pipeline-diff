@@ -579,6 +579,7 @@ let   INV_RESULT = null;
 
 window.addEventListener('DOMContentLoaded', () => {
   buildInvUploadSlots();
+  restoreInvFiles();
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
   document.getElementById('rev-start-val').textContent = ALL_WEEKS[0];
@@ -636,12 +637,17 @@ function processInvFile(file, week, sectionId) {
     const wb   = XLSX.read(ev.target.result, { type: 'binary' });
     const rows = parseInventorySheet(wb);
     INV_FILES[week][sectionId] = { rows, fileName: file.name };
-    document.getElementById(`inv-slot-name-${week}-${sectionId}`).textContent = file.name;
-    document.getElementById(`inv-slot-rows-${week}-${sectionId}`).textContent = rows.length ? `${rows.length}행` : '⚠ 인식 실패';
-    document.getElementById(`inv-slot-${week}-${sectionId}`).classList.add('has-file');
+    applyInvSlotUI(week, sectionId, file.name, rows.length);
     updateInvCompareBtn();
+    saveInvFiles();
   };
   reader.readAsBinaryString(file);
+}
+
+function applyInvSlotUI(week, sectionId, fileName, rowCount) {
+  document.getElementById(`inv-slot-name-${week}-${sectionId}`).textContent = fileName;
+  document.getElementById(`inv-slot-rows-${week}-${sectionId}`).textContent = rowCount ? `${rowCount}행` : '⚠ 인식 실패';
+  document.getElementById(`inv-slot-${week}-${sectionId}`).classList.add('has-file');
 }
 
 function updateInvCompareBtn() {
@@ -650,10 +656,45 @@ function updateInvCompareBtn() {
   document.getElementById('inv-compare-btn').disabled = !(anyPrev && anyCurr);
 }
 
+// ─── 인벤토리 비교: 업로드 데이터 저장/복원 (localStorage) ────────────────────
+// 새로고침·재접속해도 업로드/분석 결과가 유지되도록 원본 파싱 데이터를 저장한다.
+
+const INV_STORAGE_KEY = 'inv_compare_files';
+
+function saveInvFiles() {
+  try {
+    localStorage.setItem(INV_STORAGE_KEY, JSON.stringify(INV_FILES));
+  } catch (e) {
+    document.getElementById('inv-status').textContent = '⚠ 저장 공간 부족으로 자동저장에 실패했습니다.';
+  }
+}
+
+function restoreInvFiles() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(INV_STORAGE_KEY) || 'null'); }
+  catch (e) { saved = null; }
+  if (!saved) return;
+
+  ['prev', 'curr'].forEach(week => {
+    Object.entries(saved[week] || {}).forEach(([sectionId, entry]) => {
+      if (!entry || !entry.rows) return;
+      INV_FILES[week][sectionId] = entry;
+      applyInvSlotUI(week, sectionId, entry.fileName, entry.rows.length);
+    });
+  });
+
+  updateInvCompareBtn();
+  if (Object.keys(INV_FILES.prev).length && Object.keys(INV_FILES.curr).length) {
+    runInvCompare();
+    document.getElementById('inv-status').textContent = '✓ 이전 업로드/분석 결과를 불러왔습니다.';
+  }
+}
+
 function resetInvAll() {
   INV_FILES.prev = {};
   INV_FILES.curr = {};
   INV_RESULT = null;
+  localStorage.removeItem(INV_STORAGE_KEY);
   INV_SECTIONS.forEach(s => {
     ['prev', 'curr'].forEach(week => {
       const nameEl = document.getElementById(`inv-slot-name-${week}-${s.id}`);
