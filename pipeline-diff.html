@@ -1183,7 +1183,9 @@ async function downloadInvExcel() {
 
   const wb = new ExcelJS.Workbook();
   const headerFill = 'FF22263A';
-  const fillMap = { new: 'FF0D1A2E', del: 'FF1E0E08', changed: 'FF2A2408', productdown: 'FF2D0F0F' };
+  // 엑셀은 기본이 흰 배경 + 검정 글씨이므로, 웹사이트의 어두운 배경용 색을 그대로 쓰면
+  // 글자색을 못 읽는 '새까만 셀'이 됨 → 흰 배경에서도 읽히는 옅은 색으로 대체
+  const fillMap = { new: 'FFDCFCE7', del: 'FFFFE4D6', changed: 'FFFEF3C7', productdown: 'FFFECACA' };
   const labelMap = { new: '신규', del: '삭제', changed: '변동', move: '구간이동', same: '유지' };
   const order = { new: 0, move: 1, changed: 2, same: 3, del: 4 };
 
