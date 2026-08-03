@@ -6,6 +6,7 @@
 <title>주간 파이프라인 변동이력</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -126,9 +127,65 @@
   .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .code { font-family: monospace; font-size: 11px; color: var(--text-sub); }
   tr.row-new td  { background: #0d1a2e; }
-  tr.row-del td  { background: #1e0e08; }
+  tr.row-del td  { background: #1e0e08; text-decoration: line-through; color: var(--text-sub); }
   tr.row-up td   { background: #091810; }
   tr.row-down td { background: #1c0c0c; }
+  tr.row-changed td     { background: #2a2408; }
+  tr.row-productdown td { background: #2d0f0f; }
+  .num-changed { color: var(--down); font-weight: 700; }
+  .badge-changed { background: #3a2f08; color: #f5c518; }
+  .badge-move    { background: #2a1d4a; color: #a78bfa; }
+  .rg-move { background: #2a1d4a; color: #a78bfa; }
+
+  /* ── 인벤토리 비교: 업로드 슬롯 ────────────────────────────────────── */
+  .inv-upload-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+  .inv-upload-col-title { font-size: 13px; font-weight: 700; color: var(--text-sub); margin-bottom: 10px; }
+  .inv-slot-list { display: flex; flex-direction: column; gap: 8px; }
+  .inv-slot {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; cursor: pointer; transition: all .2s; user-select: none;
+  }
+  .inv-slot:hover { border-color: var(--accent); background: var(--surface2); }
+  .inv-slot.has-file { border-color: var(--accent); }
+  .inv-slot.drag-over { border-color: var(--accent); background: rgba(79,110,247,0.12); }
+  .inv-slot-icon  { flex-shrink: 0; font-size: 15px; }
+  .inv-slot-label { width: 62px; flex-shrink: 0; font-weight: 700; font-size: 12.5px; }
+  .inv-slot-name  { flex: 1; font-size: 12px; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inv-slot.has-file .inv-slot-name { color: var(--text); }
+  .inv-slot-rows  { flex-shrink: 0; font-size: 11px; color: var(--text-sub); }
+
+  /* ── 인벤토리 비교: 분석 결과 ──────────────────────────────────────── */
+  .inv-summary-line {
+    font-size: 14px; font-weight: 600; margin-bottom: 14px; padding: 12px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .inv-move-block {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 16px;
+  }
+  .inv-move-title {
+    font-size: 11px; font-weight: 700; color: var(--text-sub); text-transform: uppercase;
+    letter-spacing: .5px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .inv-move-line { display: flex; align-items: center; gap: 10px; font-size: 12.5px; padding: 6px 4px; flex-wrap: wrap; }
+  .move-icon { font-weight: 700; flex-shrink: 0; min-width: 78px; }
+  .move-in .move-icon, .move-new .move-icon { color: var(--up); }
+  .move-out .move-icon, .move-del .move-icon { color: var(--down); }
+  .move-code { font-family: monospace; font-size: 11px; color: var(--accent); flex-shrink: 0; }
+  .move-name { flex: 1; min-width: 120px; }
+  .move-section { color: var(--text-sub); font-size: 11.5px; flex-shrink: 0; }
+  .move-amt { color: var(--text-sub); font-size: 11.5px; flex-shrink: 0; }
+  tr.inv-total-row td { font-weight: 700; color: var(--text); background: #0f1117; border-top: 1px solid var(--border); }
+
+  .report-draft-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-top: 24px; }
+  .report-draft-header { display: flex; align-items: center; margin-bottom: 12px; gap: 12px; }
+  .report-draft-title { font-size: 14px; font-weight: 700; flex: 1; }
+  .report-draft-text {
+    white-space: pre-wrap; font-family: monospace; font-size: 12.5px; line-height: 1.7;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; max-height: 500px; overflow-y: auto;
+  }
 
   /* ── 변동보고서 styles ──────────────────────────────────── */
   .report-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
@@ -297,6 +354,7 @@
     main { padding: 20px; }
     header { padding: 20px 20px 0; }
     .upload-grid { grid-template-columns: 1fr; }
+    .inv-upload-wrap { grid-template-columns: 1fr; }
     .summary-row { grid-template-columns: repeat(2, 1fr); }
     .report-section-meta { display: none; }
   }
@@ -325,8 +383,28 @@
 
   <!-- Inventory tab -->
   <div id="tab-inventory" class="tab-content active">
-    <div class="inv-subtab-row" id="inv-subtab-row"></div>
-    <div id="inv-sections"></div>
+    <div class="inv-upload-wrap">
+      <div>
+        <div class="inv-upload-col-title">전주 인벤토리 (구간별 선택 업로드)</div>
+        <div class="inv-slot-list" id="inv-slots-prev"></div>
+      </div>
+      <div>
+        <div class="inv-upload-col-title">금주 인벤토리 (구간별 선택 업로드)</div>
+        <div class="inv-slot-list" id="inv-slots-curr"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="inv-compare-btn" onclick="runInvCompare()" disabled>변동이력 분석</button>
+      <button class="btn btn-secondary" onclick="resetInvAll()">초기화</button>
+      <button class="btn btn-secondary" id="inv-excel-btn" onclick="downloadInvExcel()" disabled>📥 엑셀 다운로드</button>
+      <span class="status-msg" id="inv-status"></span>
+    </div>
+    <div id="inv-analysis-area">
+      <div class="empty-state">
+        <div class="e-icon">📊</div>
+        <p>전주 · 금주 인벤토리 파일을 업로드하고 분석을 실행하세요. (구간별 선택 업로드 가능)</p>
+      </div>
+    </div>
   </div>
 
   <!-- Sales tab -->
@@ -361,12 +439,12 @@
   <div id="tab-report" class="tab-content">
     <div class="report-toolbar">
       <button class="btn btn-primary" onclick="generateReport()">보고서 생성 / 새로고침</button>
-      <span class="status-msg">인벤토리 탭에서 분석 완료된 구간(90% · 75% · 50%)을 기준으로 보고서를 생성합니다.</span>
+      <span class="status-msg">인벤토리 비교 탭에서 분석을 실행하면 7개 구간(100%·90%·75%·50%(F)·50%(U)·25%·0%) 전체를 기준으로 보고서를 생성합니다.</span>
     </div>
     <div id="report-content">
       <div class="empty-state">
         <div class="e-icon">📋</div>
-        <p>인벤토리 탭에서 90% · 75% · 50% 구간을 분석한 후 보고서를 생성하세요.</p>
+        <p>인벤토리 비교 탭에서 변동이력 분석을 실행한 후 보고서를 생성하세요.</p>
       </div>
     </div>
   </div>
@@ -469,78 +547,131 @@
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const INV_TYPES    = ['100', '90', '75', '50'];
-const REPORT_TYPES = ['90', '75', '50'];
+const INV_SECTIONS = [
+  { id: '100', label: '100%' },
+  { id: '90',  label: '90%' },
+  { id: '75',  label: '75%' },
+  { id: '50f', label: '50%(F)' },
+  { id: '50u', label: '50%(U)' },
+  { id: '25',  label: '25%' },
+  { id: '0',   label: '0%' },
+];
+const INV_SECTION_LABEL = {};
+INV_SECTIONS.forEach(s => { INV_SECTION_LABEL[s.id] = s.label; });
+const INV_CATS = ['제품', '상품', '용역', '유지보수'];
+const AMT_EPS  = 0.05; // 백만원 — 이 값 미만 차이는 변동으로 인정하지 않음
 
 const CAT_DEFS = [
   { name: '제품',    re: /^제품$|제품\s*합계|제품\s*금액/i },
   { name: '상품',    re: /^상품$|상품\s*합계|상품\s*금액/i },
   { name: '용역',    re: /^용역$|용역\s*합계|용역\s*금액/i },
-  { name: '유지관리', re: /유지\s*관리|유지\s*보수/i },
+  { name: '유지보수', re: /유지\s*관리|유지\s*보수/i },
 ];
 
 const DATA = { sal: {} };
-INV_TYPES.forEach(p => { DATA['inv' + p] = {}; });
+
+// 인벤토리 비교: 구간별 업로드 원본 { prev: { '100': {rows,fileName}, ... }, curr: {...} }
+const INV_FILES  = { prev: {}, curr: {} };
+// 분석 결과: { bySection: { '100': { rows, inflow, outflow, brandNew, fullyDeleted }, ... } }
+let   INV_RESULT = null;
 
 // ─── Page init ────────────────────────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', () => {
-  buildInventorySections();
-  INV_TYPES.forEach(p => {
-    setupCard('inv' + p, 'prev');
-    setupCard('inv' + p, 'curr');
-  });
+  buildInvUploadSlots();
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
   document.getElementById('rev-start-val').textContent = ALL_WEEKS[0];
   document.getElementById('rev-end-val').textContent   = ALL_WEEKS[51];
 });
 
-function buildInventorySections() {
-  const subtabRow   = document.getElementById('inv-subtab-row');
-  const sectionsDiv = document.getElementById('inv-sections');
-
-  INV_TYPES.forEach((pct, i) => {
-    const typeId  = 'inv' + pct;
-    const isFirst = i === 0;
-
-    const tab = document.createElement('div');
-    tab.id        = 'inv-subtab-' + pct;
-    tab.className = 'inv-subtab' + (isFirst ? ' active' : '');
-    tab.textContent = pct + '%';
-    tab.onclick = () => switchInvTab(pct);
-    subtabRow.appendChild(tab);
-
-    const section = document.createElement('div');
-    section.id        = 'inv-sub-' + pct;
-    section.className = 'inv-sub' + (isFirst ? ' active' : '');
-    section.innerHTML = `
-      <div class="upload-grid">
-        <div class="upload-card" id="${typeId}-prev-card">
-          <input type="file" accept=".xlsx,.xls" id="${typeId}-prev-input" style="display:none">
-          <div class="upload-icon">📂</div>
-          <div class="upload-label">전주 인벤토리 ${pct}%</div>
-          <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
-          <div class="upload-filename" id="${typeId}-prev-name"></div>
-          <div class="upload-rows" id="${typeId}-prev-rows"></div>
-        </div>
-        <div class="upload-card" id="${typeId}-curr-card">
-          <input type="file" accept=".xlsx,.xls" id="${typeId}-curr-input" style="display:none">
-          <div class="upload-icon">📂</div>
-          <div class="upload-label">금주 인벤토리 ${pct}%</div>
-          <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
-          <div class="upload-filename" id="${typeId}-curr-name"></div>
-          <div class="upload-rows" id="${typeId}-curr-rows"></div>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="${typeId}-compare-btn" onclick="runCompare('${typeId}')" disabled>변동이력 분석</button>
-        <button class="btn btn-secondary" onclick="resetAll('${typeId}')">초기화</button>
-        <span class="status-msg" id="${typeId}-status"></span>
-      </div>
-      <div id="${typeId}-result"></div>`;
-    sectionsDiv.appendChild(section);
+function buildInvUploadSlots() {
+  const prevList = document.getElementById('inv-slots-prev');
+  const currList = document.getElementById('inv-slots-curr');
+  INV_SECTIONS.forEach(s => {
+    prevList.appendChild(makeInvSlot('prev', s));
+    currList.appendChild(makeInvSlot('curr', s));
   });
+}
+
+function makeInvSlot(week, s) {
+  const div = document.createElement('div');
+  div.className = 'inv-slot';
+  div.id = `inv-slot-${week}-${s.id}`;
+  div.innerHTML = `
+    <input type="file" accept=".xlsx,.xls" id="inv-input-${week}-${s.id}" style="display:none">
+    <span class="inv-slot-icon">📁</span>
+    <span class="inv-slot-label">${s.label}</span>
+    <span class="inv-slot-name" id="inv-slot-name-${week}-${s.id}">파일 선택 안 됨</span>
+    <span class="inv-slot-rows" id="inv-slot-rows-${week}-${s.id}"></span>`;
+  setupInvSlot(div, week, s.id);
+  return div;
+}
+
+function setupInvSlot(card, week, sectionId) {
+  const input = card.querySelector('input[type=file]');
+  card.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) processInvFile(file, week, sectionId);
+    e.target.value = '';
+  });
+  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); });
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processInvFile(file, week, sectionId);
+  });
+}
+
+function processInvFile(file, week, sectionId) {
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb   = XLSX.read(ev.target.result, { type: 'binary' });
+    const rows = parseInventorySheet(wb);
+    INV_FILES[week][sectionId] = { rows, fileName: file.name };
+    document.getElementById(`inv-slot-name-${week}-${sectionId}`).textContent = file.name;
+    document.getElementById(`inv-slot-rows-${week}-${sectionId}`).textContent = rows.length ? `${rows.length}행` : '⚠ 인식 실패';
+    document.getElementById(`inv-slot-${week}-${sectionId}`).classList.add('has-file');
+    updateInvCompareBtn();
+  };
+  reader.readAsBinaryString(file);
+}
+
+function updateInvCompareBtn() {
+  const anyPrev = Object.keys(INV_FILES.prev).length > 0;
+  const anyCurr = Object.keys(INV_FILES.curr).length > 0;
+  document.getElementById('inv-compare-btn').disabled = !(anyPrev && anyCurr);
+}
+
+function resetInvAll() {
+  INV_FILES.prev = {};
+  INV_FILES.curr = {};
+  INV_RESULT = null;
+  INV_SECTIONS.forEach(s => {
+    ['prev', 'curr'].forEach(week => {
+      const nameEl = document.getElementById(`inv-slot-name-${week}-${s.id}`);
+      const rowsEl = document.getElementById(`inv-slot-rows-${week}-${s.id}`);
+      const slotEl = document.getElementById(`inv-slot-${week}-${s.id}`);
+      if (nameEl) nameEl.textContent = '파일 선택 안 됨';
+      if (rowsEl) rowsEl.textContent = '';
+      if (slotEl) slotEl.classList.remove('has-file');
+    });
+  });
+  document.getElementById('inv-compare-btn').disabled = true;
+  document.getElementById('inv-excel-btn').disabled = true;
+  document.getElementById('inv-status').textContent = '';
+  document.getElementById('inv-analysis-area').innerHTML = `
+    <div class="empty-state">
+      <div class="e-icon">📊</div>
+      <p>전주 · 금주 인벤토리 파일을 업로드하고 분석을 실행하세요. (구간별 선택 업로드 가능)</p>
+    </div>`;
 }
 
 // ─── Upload card: click + drag & drop ────────────────────────────────────────
@@ -568,8 +699,8 @@ function setupCard(type, week) {
 
 // ─── Inventory parser (multi-row header) ─────────────────────────────────────
 // raw[2]: 기본헤더  raw[3]: 금액 대분류  raw[4]: 금액 세부  raw[5]+: data
-// 프로젝트코드: fixed at column index 2
-// 제품합계: row[4]에서 '제품 합계' 탐지   상품/용역/유지보수/총합계: row[3]에서 탐지
+// 프로젝트코드: 'OP-'로 시작하는 셀 위치를 동적으로 탐지 (파일마다 컬럼 위치가 달라짐)
+// 제품합계: row[4]에서 '제품 합계' 탐지   상품/용역/유지보수/총합계/고객사명/프로젝트명/영업담당자/수주확도/수주상태: row[2] 또는 row[3]에서 탐지
 
 function parseInventorySheet(wb) {
   for (const sname of wb.SheetNames) {
@@ -591,18 +722,29 @@ function parseInventorySheet(wb) {
       return -1;
     };
 
-    const colCode    = 2;
-    const colName    = findCol([row2, row3], '프로젝트명');
-    const colCust    = findCol([row2, row3], '고객사');
-    const colSales   = findCol([row2, row3], /영업담당|영업대표/);
-    const colStatus  = findCol([row2, row3], /수주.?확도/);
-    const colTotal   = findCol([row3],       /총.?합계/);
-    const colProduct = findCol([row4],       /제품.?합계/);
-    const colGoods   = findCol([row3],       /상품/);
-    const colService = findCol([row3],       /용역/);
-    const colMaint   = findCol([row3],       /유지/);
+    const colName    = findCol([row2], '프로젝트명');
+    const colCust    = findCol([row2], /고객사/);
+    const colSales   = findCol([row2], /영업담당|영업대표/);
+    const colStatus  = findCol([row2], /수주.?확도/);
+    const colState   = findCol([row2], /수주.?상태/);
+    const colTotal   = findCol([row3], /총.?합계/);
+    const colGoods   = findCol([row3], /상품/);
+    const colService = findCol([row3], /용역/);
+    const colMaint   = findCol([row3], /유지/);
+    const colProduct = findCol([row4], /제품.?합계/);
 
-    const dataRows = raw.slice(5).filter(r => r[colCode] && String(r[colCode]).trim() !== '');
+    // 프로젝트코드 컬럼 위치: 'OP-'로 시작하는 셀을 찾아 동적으로 탐지
+    let colCode = -1;
+    for (let ri = 5; ri < raw.length && colCode < 0; ri++) {
+      const r = raw[ri] || [];
+      for (let ci = 0; ci < r.length; ci++) {
+        if (/^OP-/i.test(String(r[ci] || '').trim())) { colCode = ci; break; }
+      }
+    }
+    if (colCode < 0) continue;
+
+    // 유효 행 판별: 'OP-'로 시작하는 셀이 있는 행만 프로젝트 행으로 인정
+    const dataRows = raw.slice(5).filter(r => r[colCode] && /^OP-/i.test(String(r[colCode]).trim()));
     if (dataRows.length === 0) continue;
 
     return dataRows.map(r => {
@@ -614,12 +756,13 @@ function parseInventorySheet(wb) {
         '고객사명':     s(colCust).trim(),
         '영업담당자':   s(colSales),
         '수주확도':     s(colStatus),
+        '수주상태':     s(colState),
         '총합계':       n(colTotal),
       };
-      if (colProduct >= 0) obj['제품합계']    = n(colProduct);
-      if (colGoods   >= 0) obj['상품합계']    = n(colGoods);
-      if (colService >= 0) obj['용역합계']    = n(colService);
-      if (colMaint   >= 0) obj['유지관리합계'] = n(colMaint);
+      if (colProduct >= 0) obj['제품합계']     = n(colProduct);
+      if (colGoods   >= 0) obj['상품합계']     = n(colGoods);
+      if (colService >= 0) obj['용역합계']     = n(colService);
+      if (colMaint   >= 0) obj['유지보수합계'] = n(colMaint);
       return obj;
     });
   }
@@ -635,13 +778,9 @@ function processFile(file, type, week) {
   reader.onload = ev => {
     const wb = XLSX.read(ev.target.result, { type: 'binary' });
     let rows = [];
-    if (type.startsWith('inv')) {
-      rows = parseInventorySheet(wb);
-    } else {
-      for (const sname of wb.SheetNames) {
-        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sname], { defval: '' });
-        if (raw.length > 2) { rows = raw; break; }
-      }
+    for (const sname of wb.SheetNames) {
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[sname], { defval: '' });
+      if (raw.length > 2) { rows = raw; break; }
     }
     DATA[type][week] = rows;
     document.getElementById(`${type}-${week}-name`).textContent = file.name;
@@ -683,11 +822,435 @@ function switchTab(t) {
   if (t === 'revenue-trend')  renderRevenueChart();
 }
 
-function switchInvTab(pct) {
-  document.querySelectorAll('.inv-subtab').forEach(el => el.classList.remove('active'));
-  document.getElementById('inv-subtab-' + pct).classList.add('active');
-  document.querySelectorAll('.inv-sub').forEach(el => el.classList.remove('active'));
-  document.getElementById('inv-sub-' + pct).classList.add('active');
+// ─── 인벤토리 비교: 유틸 ───────────────────────────────────────────────────────
+
+function fmtAmt(v) {
+  return (Math.round((v || 0) * 10) / 10).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function catVal(row, cat) { return row ? (row[cat + '합계'] || 0) : 0; }
+function totalVal(row)    { return row ? (row['총합계'] || 0) : 0; }
+
+// ─── 인벤토리 비교: 전 구간 통합 변동 분석 ─────────────────────────────────────
+
+function runInvCompare() {
+  const prevBy = {}, currBy = {}; // 프로젝트코드 -> { section, row }
+  INV_SECTIONS.forEach(s => {
+    (INV_FILES.prev[s.id]?.rows || []).forEach(r => {
+      const code = r['프로젝트코드'];
+      if (code) prevBy[code] = { section: s.id, row: r };
+    });
+    (INV_FILES.curr[s.id]?.rows || []).forEach(r => {
+      const code = r['프로젝트코드'];
+      if (code) currBy[code] = { section: s.id, row: r };
+    });
+  });
+
+  const bySection = {};
+  INV_SECTIONS.forEach(s => { bySection[s.id] = { rows: [], inflow: [], outflow: [], brandNew: [], fullyDeleted: [] }; });
+
+  const allCodes = new Set([...Object.keys(prevBy), ...Object.keys(currBy)]);
+
+  allCodes.forEach(code => {
+    const p = prevBy[code], c = currBy[code];
+    const pAmt = totalVal(p?.row), cAmt = totalVal(c?.row);
+    const cats = {};
+    INV_CATS.forEach(cat => {
+      const pv = catVal(p?.row, cat), cv = catVal(c?.row, cat);
+      cats[cat] = { prev: pv, curr: cv, diff: cv - pv };
+    });
+    const baseRow = (c && c.row) || (p && p.row);
+    const item = {
+      code,
+      cust:   baseRow['고객사명']   || '',
+      name:   baseRow['프로젝트명'] || '',
+      sales:  baseRow['영업담당자'] || '',
+      status: baseRow['수주확도']   || '',
+      state:  baseRow['수주상태']   || '',
+      prevAmt: pAmt, currAmt: cAmt, diff: cAmt - pAmt,
+      cats,
+      prevSection: p?.section, currSection: c?.section,
+    };
+
+    if (!p && c) {
+      item.type = 'new';
+      bySection[c.section].rows.push(item);
+      bySection[c.section].brandNew.push(item);
+    } else if (p && !c) {
+      item.type = 'del';
+      bySection[p.section].rows.push(item);
+      bySection[p.section].fullyDeleted.push(item);
+    } else if (p.section !== c.section) {
+      item.type = 'move';
+      bySection[c.section].rows.push(item);
+      bySection[c.section].inflow.push(item);
+      bySection[p.section].outflow.push(item);
+    } else {
+      item.type = Math.abs(item.diff) >= AMT_EPS ? 'changed' : 'same';
+      bySection[c.section].rows.push(item);
+    }
+  });
+
+  INV_RESULT = { bySection, prevBy, currBy };
+  renderInvAnalysis();
+  document.getElementById('inv-excel-btn').disabled = false;
+  document.getElementById('inv-status').textContent = '✓ 분석 완료 — ' + new Date().toLocaleString('ko-KR');
+}
+
+function invSectionPrevTotal(sectionId) {
+  return (INV_FILES.prev[sectionId]?.rows || []).reduce((s, r) => s + (r['총합계'] || 0), 0);
+}
+function invSectionCurrTotal(sectionId) {
+  return (INV_FILES.curr[sectionId]?.rows || []).reduce((s, r) => s + (r['총합계'] || 0), 0);
+}
+function invSectionCurrCatTotal(sectionId, cat) {
+  return (INV_FILES.curr[sectionId]?.rows || []).reduce((s, r) => s + (r[cat + '합계'] || 0), 0);
+}
+
+// ─── 인벤토리 비교: 렌더링 ─────────────────────────────────────────────────────
+
+function renderInvAnalysis() {
+  const subtabHtml = `<div class="inv-subtab-row" id="inv-subtab-row">` +
+    INV_SECTIONS.map((s, i) => `<div class="inv-subtab${i === 0 ? ' active' : ''}" id="inv-subtab-${s.id}" onclick="switchInvSectionTab('${s.id}')">${s.label}</div>`).join('') +
+    `</div>`;
+  const sectionsHtml = `<div id="inv-section-panels">` +
+    INV_SECTIONS.map((s, i) => `<div class="inv-sub${i === 0 ? ' active' : ''}" id="inv-section-${s.id}">${buildInvSectionHtml(s.id)}</div>`).join('') +
+    `</div>`;
+
+  document.getElementById('inv-analysis-area').innerHTML = subtabHtml + sectionsHtml + buildReportDraftArea();
+}
+
+function switchInvSectionTab(id) {
+  document.querySelectorAll('#inv-subtab-row .inv-subtab').forEach(el => el.classList.remove('active'));
+  document.getElementById('inv-subtab-' + id).classList.add('active');
+  document.querySelectorAll('#inv-section-panels .inv-sub').forEach(el => el.classList.remove('active'));
+  document.getElementById('inv-section-' + id).classList.add('active');
+}
+
+function buildInvSectionHtml(sectionId) {
+  const label = INV_SECTION_LABEL[sectionId];
+  const sec   = INV_RESULT.bySection[sectionId];
+  const hasPrevFile = !!INV_FILES.prev[sectionId];
+  const hasCurrFile = !!INV_FILES.curr[sectionId];
+
+  if (!hasPrevFile && !hasCurrFile) {
+    return `<div class="empty-state"><div class="e-icon">📁</div><p>${label} 구간 파일이 업로드되지 않았습니다.</p></div>`;
+  }
+
+  const prevTotal = invSectionPrevTotal(sectionId);
+  const currTotal = invSectionCurrTotal(sectionId);
+  const totalDiff = currTotal - prevTotal;
+
+  const summaryLine = Math.abs(totalDiff) < AMT_EPS
+    ? `<div class="inv-summary-line">전주 대비 <b>변동 없음</b> &nbsp;|&nbsp; 금주 합계 ${fmtAmt(currTotal)}백만</div>`
+    : `<div class="inv-summary-line">전주 대비 ${totalDiff > 0 ? '▲' : '▼'} <b class="${totalDiff > 0 ? 'diff-up' : 'diff-down'}">${fmtAmt(Math.abs(totalDiff))}백만</b> &nbsp;|&nbsp; 전주 ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만</div>`;
+
+  return summaryLine + buildMoveBlock(sectionId, sec) + buildInvTable(sectionId, sec);
+}
+
+function amtChangeNote(prevAmt, currAmt, isNew, isDel) {
+  if (isNew) return `${fmtAmt(currAmt)}백만원`;
+  if (isDel) return `${fmtAmt(prevAmt)}백만원`;
+  const diff = currAmt - prevAmt;
+  if (Math.abs(diff) < AMT_EPS) return `${fmtAmt(currAmt)}백만원 (변동없음)`;
+  const dir = diff > 0 ? '증가' : '감소';
+  return `전주 ${fmtAmt(prevAmt)}백만원 → 금주 ${fmtAmt(currAmt)}백만원(${fmtAmt(Math.abs(diff))}백만원 ${dir})`;
+}
+
+function moveLine(icon, cls, label, it, fromSection, toSection) {
+  const fromLabel = fromSection ? INV_SECTION_LABEL[fromSection] : null;
+  const toLabel   = toSection   ? INV_SECTION_LABEL[toSection]   : null;
+  let sectionNote = '';
+  if (fromLabel && toLabel)       sectionNote = `${fromLabel} → ${toLabel}`;
+  else if (fromLabel && !toLabel) sectionNote = `${fromLabel} → (삭제)`;
+  else if (!fromLabel && toLabel) sectionNote = `(신규) → ${toLabel}`;
+
+  const amtNote = amtChangeNote(it.prevAmt, it.currAmt, label === '완전신규', label === '완전삭제');
+
+  return `<div class="inv-move-line ${cls}">
+    <span class="move-icon">${icon}${label}</span>
+    <span class="move-code">${escHtml(it.code)}</span>
+    <span class="move-name">${escHtml(it.name)}</span>
+    <span class="move-section">${sectionNote}</span>
+    <span class="move-amt">${amtNote}</span>
+  </div>`;
+}
+
+function buildMoveBlock(sectionId, sec) {
+  const lines = [];
+  sec.inflow.forEach(it       => lines.push(moveLine('▲', 'move-in',  '유입',   it, it.prevSection, sectionId)));
+  sec.brandNew.forEach(it     => lines.push(moveLine('★', 'move-new', '완전신규', it, null, sectionId)));
+  sec.outflow.forEach(it      => lines.push(moveLine('▼', 'move-out', '유출',   it, sectionId, it.currSection)));
+  sec.fullyDeleted.forEach(it => lines.push(moveLine('✗', 'move-del', '완전삭제', it, sectionId, null)));
+
+  if (!lines.length) return '';
+  return `<div class="inv-move-block">
+    <div class="inv-move-title">구간 이동 내역</div>
+    ${lines.join('')}
+  </div>`;
+}
+
+function buildRemark(it) {
+  if (it.type === 'new' || it.type === 'del' || it.type === 'same') return '';
+  if (it.type === 'move') {
+    const fromLabel = INV_SECTION_LABEL[it.prevSection];
+    const toLabel   = INV_SECTION_LABEL[it.currSection];
+    if (Math.abs(it.diff) < AMT_EPS) return `${fromLabel} → ${toLabel} 구간이동`;
+    const dir = it.diff > 0 ? '증가' : '감소';
+    return `전주 ${fmtAmt(it.prevAmt)}백만원 → 금주 ${fmtAmt(it.currAmt)}백만원(${fmtAmt(Math.abs(it.diff))}백만원 ${dir})`;
+  }
+  // changed: 변한 카테고리만 나열
+  const parts = [];
+  INV_CATS.forEach(cat => {
+    const d = it.cats[cat].diff;
+    if (Math.abs(d) >= AMT_EPS) parts.push(`${cat} ${d > 0 ? '+' : ''}${fmtAmt(d)}백만`);
+  });
+  return parts.join(', ');
+}
+
+function buildInvTable(sectionId, sec) {
+  if (!sec.rows.length) {
+    return `<div class="empty-state" style="padding:40px 20px"><p>표시할 항목이 없습니다.</p></div>`;
+  }
+
+  const order = { new: 0, move: 1, changed: 2, same: 3, del: 4 };
+  const rows  = [...sec.rows].sort((a, b) => {
+    if (order[a.type] !== order[b.type]) return order[a.type] - order[b.type];
+    return Math.abs(b.diff) - Math.abs(a.diff);
+  });
+
+  const badgeMap = { new: 'badge-new', del: 'badge-del', changed: 'badge-changed', move: 'badge-move', same: 'badge-same' };
+  const labelMap = { new: '신규', del: '삭제', changed: '변동', move: '구간이동', same: '유지' };
+
+  const trs = rows.map(it => {
+    const productDown = it.type !== 'new' && it.type !== 'del' && it.cats['제품'].diff <= -AMT_EPS;
+    let rowCls = '';
+    if (it.type === 'new') rowCls = 'row-new';
+    else if (it.type === 'del') rowCls = 'row-del';
+    else if (productDown) rowCls = 'row-productdown';
+    else if (it.type === 'changed' || it.type === 'move') rowCls = 'row-changed';
+
+    const remark = buildRemark(it);
+
+    const cell = cat => {
+      const v = it.type === 'del' ? it.cats[cat].prev : it.cats[cat].curr;
+      const changed = it.type !== 'new' && it.type !== 'del' && Math.abs(it.cats[cat].diff) >= AMT_EPS;
+      return `<td class="amount${changed ? ' num-changed' : ''}">${fmtAmt(v)}</td>`;
+    };
+
+    const totalV = it.type === 'del' ? it.prevAmt : it.currAmt;
+    const totalChanged = it.type !== 'new' && it.type !== 'del' && Math.abs(it.diff) >= AMT_EPS;
+
+    return `<tr class="${rowCls}">
+      <td><span class="badge ${badgeMap[it.type]}">${labelMap[it.type]}</span></td>
+      <td>${escHtml(it.cust)}</td>
+      <td class="code">${escHtml(it.code)}</td>
+      <td><div class="proj-name" title="${escHtml(it.name)}">${escHtml(it.name)}</div></td>
+      <td>${escHtml(it.sales)}</td>
+      <td>${escHtml(it.status)}</td>
+      <td>${escHtml(it.state)}</td>
+      <td style="font-size:11.5px;color:var(--text-sub)">${escHtml(remark)}</td>
+      ${cell('제품')}${cell('상품')}${cell('용역')}${cell('유지보수')}
+      <td class="amount${totalChanged ? ' num-changed' : ''}">${fmtAmt(totalV)}</td>
+    </tr>`;
+  }).join('');
+
+  const totalRow = `<tr class="inv-total-row">
+    <td colspan="8" style="text-align:right">금주 합계</td>
+    <td class="amount">${fmtAmt(invSectionCurrCatTotal(sectionId, '제품'))}</td>
+    <td class="amount">${fmtAmt(invSectionCurrCatTotal(sectionId, '상품'))}</td>
+    <td class="amount">${fmtAmt(invSectionCurrCatTotal(sectionId, '용역'))}</td>
+    <td class="amount">${fmtAmt(invSectionCurrCatTotal(sectionId, '유지보수'))}</td>
+    <td class="amount">${fmtAmt(invSectionCurrTotal(sectionId))}</td>
+  </tr>`;
+
+  return `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>구분</th><th>고객사명</th><th>프로젝트코드</th><th>프로젝트명</th><th>영업담당자</th>
+      <th>수주확도</th><th>수주상태</th><th>비고</th>
+      <th>제품(백만)</th><th>상품(백만)</th><th>용역(백만)</th><th>유지보수(백만)</th><th>총합계(백만)</th>
+    </tr></thead>
+    <tbody>${trs}${totalRow}</tbody>
+  </table></div>`;
+}
+
+// ─── 인벤토리 비교: 보고문 초안 ─────────────────────────────────────────────────
+
+function buildSectionReportText(sectionId) {
+  const label = INV_SECTION_LABEL[sectionId];
+  const sec   = INV_RESULT.bySection[sectionId];
+  const prevTotal = invSectionPrevTotal(sectionId);
+  const currTotal = invSectionCurrTotal(sectionId);
+  const diff = currTotal - prevTotal;
+
+  const notable = sec.rows.filter(it => it.type !== 'same');
+  // 이 구간에서 다른 구간으로 빠져나간 항목(유출)도 순변동 사유로 함께 표기
+  const outflowLines = sec.outflow.map(it =>
+    ` - ${it.code} ${it.name} / ${fmtAmt(it.prevAmt)}백만 / 유출: ${label} → ${INV_SECTION_LABEL[it.currSection]}`);
+
+  if (notable.length === 0 && outflowLines.length === 0) return `[${label}] 전주 대비 변동 없음`;
+
+  const header = `[${label}] 전주 대비 ${diff >= 0 ? '▲' : '▼'}${fmtAmt(Math.abs(diff))}백만`;
+  const lines = notable.map(it => {
+    let detail;
+    if (it.type === 'new')       detail = '신규';
+    else if (it.type === 'move') detail = `${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[it.currSection]}`;
+    else if (it.type === 'del')  detail = `삭제 (전주 ${fmtAmt(it.prevAmt)}백만)`;
+    else                         detail = `전주 ${fmtAmt(it.prevAmt)}백만 → 금주 ${fmtAmt(it.currAmt)}백만`;
+    const amt = it.type === 'del' ? it.prevAmt : it.currAmt;
+    return ` - ${it.code} ${it.name} / ${fmtAmt(amt)}백만 / ${detail}`;
+  });
+  return header + '\n' + lines.concat(outflowLines).join('\n');
+}
+
+function buildReportDraftArea() {
+  const text = INV_SECTIONS.map(s => buildSectionReportText(s.id)).join('\n\n');
+  return `
+  <div class="report-draft-box">
+    <div class="report-draft-header">
+      <span class="report-draft-title">보고문 초안</span>
+      <button class="btn btn-secondary" style="padding:6px 16px;font-size:12px" onclick="copyReportDraft(this)">📋 복사</button>
+    </div>
+    <div class="report-draft-text" id="report-draft-text">${escHtml(text)}</div>
+  </div>`;
+}
+
+function copyReportDraft(btn) {
+  const text = document.getElementById('report-draft-text').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ 복사됨';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }).catch(() => { alert('클립보드 복사에 실패했습니다.'); });
+}
+
+// ─── 인벤토리 비교: 엑셀 다운로드 (ExcelJS) ────────────────────────────────────
+
+function guessInvDate(week) {
+  for (const s of INV_SECTIONS) {
+    const f = INV_FILES[week][s.id];
+    if (f && f.fileName) {
+      const m = f.fileName.match(/(\d{6,8})/);
+      if (m) return m[1];
+    }
+  }
+  return week === 'prev' ? '전주' : '금주';
+}
+
+async function downloadInvExcel() {
+  if (!INV_RESULT) return;
+
+  const wb = new ExcelJS.Workbook();
+  const headerFill = 'FF22263A';
+  const fillMap = { new: 'FF0D1A2E', del: 'FF1E0E08', changed: 'FF2A2408', productdown: 'FF2D0F0F' };
+  const labelMap = { new: '신규', del: '삭제', changed: '변동', move: '구간이동', same: '유지' };
+  const order = { new: 0, move: 1, changed: 2, same: 3, del: 4 };
+
+  INV_SECTIONS.forEach(s => {
+    const sec = INV_RESULT.bySection[s.id];
+    const ws  = wb.addWorksheet(s.label.replace(/[\\/*?:[\]]/g, '_'));
+    ws.columns = [
+      { width: 10 }, { width: 16 }, { width: 14 }, { width: 30 }, { width: 12 },
+      { width: 10 }, { width: 10 }, { width: 36 },
+      { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 },
+    ];
+
+    let rIdx = 1;
+    const prevTotal = invSectionPrevTotal(s.id);
+    const currTotal = invSectionCurrTotal(s.id);
+    const diff = currTotal - prevTotal;
+    const summaryText = Math.abs(diff) < AMT_EPS
+      ? '전주 대비 변동 없음'
+      : `전주 대비 ${diff > 0 ? '▲' : '▼'} ${fmtAmt(Math.abs(diff))}백만 (전주 ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만)`;
+    ws.getCell(`A${rIdx}`).value = summaryText;
+    ws.mergeCells(`A${rIdx}:M${rIdx}`);
+    ws.getCell(`A${rIdx}`).font = { bold: true };
+    rIdx += 2;
+
+    const moveLines = [];
+    sec.inflow.forEach(it       => moveLines.push(`▲유입 ${it.code} ${it.name} (${INV_SECTION_LABEL[it.prevSection]} → ${s.label}) ${amtChangeNote(it.prevAmt, it.currAmt, false, false)}`));
+    sec.brandNew.forEach(it     => moveLines.push(`★완전신규 ${it.code} ${it.name} ${amtChangeNote(0, it.currAmt, true, false)}`));
+    sec.outflow.forEach(it      => moveLines.push(`▼유출 ${it.code} ${it.name} (${s.label} → ${INV_SECTION_LABEL[it.currSection]}) ${amtChangeNote(it.prevAmt, it.currAmt, false, false)}`));
+    sec.fullyDeleted.forEach(it => moveLines.push(`✗완전삭제 ${it.code} ${it.name} ${amtChangeNote(it.prevAmt, 0, false, true)}`));
+
+    if (moveLines.length) {
+      ws.getCell(`A${rIdx}`).value = '구간 이동 내역';
+      ws.getCell(`A${rIdx}`).font = { bold: true };
+      rIdx++;
+      moveLines.forEach(line => {
+        ws.getCell(`A${rIdx}`).value = line;
+        ws.mergeCells(`A${rIdx}:M${rIdx}`);
+        rIdx++;
+      });
+      rIdx++;
+    }
+
+    const headerRow = ws.getRow(rIdx);
+    ['구분', '고객사명', '프로젝트코드', '프로젝트명', '영업담당자', '수주확도', '수주상태', '비고', '제품(백만)', '상품(백만)', '용역(백만)', '유지보수(백만)', '총합계(백만)']
+      .forEach((h, i) => {
+        const c = headerRow.getCell(i + 1);
+        c.value = h;
+        c.font  = { bold: true, color: { argb: 'FFE8EAF6' } };
+        c.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFill } };
+      });
+    rIdx++;
+
+    const rows = [...sec.rows].sort((a, b) => order[a.type] - order[b.type] || Math.abs(b.diff) - Math.abs(a.diff));
+
+    rows.forEach(it => {
+      const productDown = it.type !== 'new' && it.type !== 'del' && it.cats['제품'].diff <= -AMT_EPS;
+      const remark = buildRemark(it);
+      const row = ws.getRow(rIdx);
+      row.getCell(1).value = labelMap[it.type];
+      row.getCell(2).value = it.cust;
+      row.getCell(3).value = it.code;
+      row.getCell(4).value = it.name;
+      row.getCell(5).value = it.sales;
+      row.getCell(6).value = it.status;
+      row.getCell(7).value = it.state;
+      row.getCell(8).value = remark;
+      INV_CATS.forEach((cat, ci) => {
+        const v = it.type === 'del' ? it.cats[cat].prev : it.cats[cat].curr;
+        const cell = row.getCell(9 + ci);
+        cell.value = Math.round(v * 10) / 10;
+        const changed = it.type !== 'new' && it.type !== 'del' && Math.abs(it.cats[cat].diff) >= AMT_EPS;
+        if (changed) cell.font = { bold: true, color: { argb: 'FFEF4444' } };
+      });
+      const totalCell = row.getCell(13);
+      totalCell.value = Math.round((it.type === 'del' ? it.prevAmt : it.currAmt) * 10) / 10;
+      if (it.type !== 'new' && it.type !== 'del' && Math.abs(it.diff) >= AMT_EPS) totalCell.font = { bold: true, color: { argb: 'FFEF4444' } };
+
+      let fillColor = null;
+      if (it.type === 'new') fillColor = fillMap.new;
+      else if (it.type === 'del') fillColor = fillMap.del;
+      else if (productDown) fillColor = fillMap.productdown;
+      else if (it.type === 'changed' || it.type === 'move') fillColor = fillMap.changed;
+      if (fillColor) {
+        row.eachCell({ includeEmpty: true }, c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } }; });
+      }
+      if (it.type === 'del') {
+        row.eachCell({ includeEmpty: true }, c => { c.font = Object.assign({}, c.font, { strike: true }); });
+      }
+      rIdx++;
+    });
+
+    const totalRow = ws.getRow(rIdx);
+    totalRow.getCell(1).value = '금주 합계';
+    ws.mergeCells(`A${rIdx}:H${rIdx}`);
+    totalRow.getCell(9).value  = Math.round(invSectionCurrCatTotal(s.id, '제품') * 10) / 10;
+    totalRow.getCell(10).value = Math.round(invSectionCurrCatTotal(s.id, '상품') * 10) / 10;
+    totalRow.getCell(11).value = Math.round(invSectionCurrCatTotal(s.id, '용역') * 10) / 10;
+    totalRow.getCell(12).value = Math.round(invSectionCurrCatTotal(s.id, '유지보수') * 10) / 10;
+    totalRow.getCell(13).value = Math.round(invSectionCurrTotal(s.id) * 10) / 10;
+    totalRow.eachCell({ includeEmpty: true }, c => { c.font = { bold: true }; });
+  });
+
+  const buf  = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `인벤토리_변동비교_${guessInvDate('prev')}_${guessInvDate('curr')}.xlsx`;
+  a.click();
 }
 
 // ─── Column detection ─────────────────────────────────────────────────────────
@@ -912,57 +1475,53 @@ function exportCsv(type) {
 // ─── 변동보고서 ───────────────────────────────────────────────────────────────
 
 function generateReport() {
-  const anyData = REPORT_TYPES.some(p => window[`_changes_inv${p}`]);
-  if (!anyData) return; // keep the empty state
+  if (!INV_RESULT) return; // keep the empty state
 
-  const html = REPORT_TYPES.map(pct => buildReportSection(pct)).join('');
+  const html = INV_SECTIONS.map(s => buildReportSection(s.id)).join('');
   document.getElementById('report-content').innerHTML = html;
 }
 
-function buildReportSection(pct) {
-  const type    = 'inv' + pct;
-  const changes = window[`_changes_${type}`];
+function buildReportSection(sectionId) {
+  const label = INV_SECTION_LABEL[sectionId];
+  const sec   = INV_RESULT.bySection[sectionId];
 
-  if (!changes) {
+  if (!INV_FILES.prev[sectionId] && !INV_FILES.curr[sectionId]) {
     return `
       <div class="report-section">
         <div class="report-section-header">
-          <span class="report-pct-badge">${pct}%</span>
-          <span class="report-section-title">수주확도 ${pct}% 구간</span>
-          <span class="report-section-meta" style="color:#555c7a">미분석 — 인벤토리 탭에서 파일을 업로드하고 분석해주세요</span>
+          <span class="report-pct-badge">${label}</span>
+          <span class="report-section-title">수주확도 ${label} 구간</span>
+          <span class="report-section-meta" style="color:#555c7a">미분석 — 인벤토리 비교 탭에서 파일을 업로드하고 분석해주세요</span>
         </div>
       </div>`;
   }
 
-  const cfg = window[`_cfg_${type}`];
-  const fmt = window[`_fmt_${type}`];
+  const byType = { new: [], del: [], move: [], changed: [] };
+  sec.rows.forEach(c => { if (byType[c.type]) byType[c.type].push(c); });
 
-  const byType = { new: [], del: [], up: [], down: [] };
-  changes.forEach(c => { if (c.changeType !== 'same') byType[c.changeType].push(c); });
-
-  const totalUp   = byType.up.reduce((s, c) => s + c.diff, 0);
-  const totalDown = byType.down.reduce((s, c) => s + c.diff, 0);
-  const totalNew  = byType.new.reduce((s, c) => s + c.currAmt, 0);
-  const totalDel  = byType.del.reduce((s, c) => s + c.prevAmt, 0);
-  const totalDiff = changes.reduce((s, c) => s + c.diff, 0);
+  const totalChanged = byType.changed.reduce((s, c) => s + c.diff, 0);
+  const totalMove    = byType.move.reduce((s, c) => s + c.diff, 0);
+  const totalNew     = byType.new.reduce((s, c) => s + c.currAmt, 0);
+  const totalDel     = byType.del.reduce((s, c) => s + c.prevAmt, 0);
+  const totalDiff    = invSectionCurrTotal(sectionId) - invSectionPrevTotal(sectionId);
 
   const metaLines = [
     `신규 <b>${byType.new.length}</b>건 · 삭제 <b>${byType.del.length}</b>건`,
-    `증가 <b>${byType.up.length}</b>건 · 감소 <b>${byType.down.length}</b>건`,
-    `순변동 <b style="color:${totalDiff>=0?'var(--up)':'var(--down)'}">${totalDiff>=0?'+':''}${fmt(totalDiff)}백만</b>`,
+    `구간이동 <b>${byType.move.length}</b>건 · 변동 <b>${byType.changed.length}</b>건`,
+    `순변동 <b style="color:${totalDiff>=0?'var(--up)':'var(--down)'}">${totalDiff>=0?'+':''}${fmtAmt(totalDiff)}백만</b>`,
   ].join(' &nbsp;|&nbsp; ');
 
   const groups = [
-    { key:'new',  cls:'rg-new',  icon:'●', label:'신규 등록 사업', meta:`${byType.new.length}건 · +${fmt(totalNew)}백만` },
-    { key:'del',  cls:'rg-del',  icon:'●', label:'삭제 / 종결 사업', meta:`${byType.del.length}건 · -${fmt(totalDel)}백만` },
-    { key:'up',   cls:'rg-up',   icon:'▲', label:'금액 증가 사업', meta:`${byType.up.length}건 · +${fmt(totalUp)}백만` },
-    { key:'down', cls:'rg-down', icon:'▼', label:'금액 감소 사업', meta:`${byType.down.length}건 · ${fmt(totalDown)}백만` },
+    { key:'new',     cls:'rg-new',  icon:'●', label:'신규 등록 사업',   meta:`${byType.new.length}건 · +${fmtAmt(totalNew)}백만` },
+    { key:'del',     cls:'rg-del',  icon:'●', label:'삭제 / 종결 사업', meta:`${byType.del.length}건 · -${fmtAmt(totalDel)}백만` },
+    { key:'move',    cls:'rg-move', icon:'↔', label:'구간 이동 사업',   meta:`${byType.move.length}건 · ${totalMove>=0?'+':''}${fmtAmt(totalMove)}백만` },
+    { key:'changed', cls:'rg-up',   icon:'▲', label:'금액 변동 사업',   meta:`${byType.changed.length}건 · ${totalChanged>=0?'+':''}${fmtAmt(totalChanged)}백만` },
   ];
 
   const groupsHtml = groups
     .filter(g => byType[g.key].length > 0)
     .map(g => {
-      const cards = byType[g.key].map(c => buildProjectCard(c, cfg, fmt, g.key)).join('');
+      const cards = byType[g.key].map(c => buildProjectCard(c, g.key)).join('');
       return `
         <div class="report-group">
           <div class="report-group-title ${g.cls}">
@@ -977,8 +1536,8 @@ function buildReportSection(pct) {
   return `
     <div class="report-section">
       <div class="report-section-header">
-        <span class="report-pct-badge">${pct}%</span>
-        <span class="report-section-title">수주확도 ${pct}% 구간</span>
+        <span class="report-pct-badge">${label}</span>
+        <span class="report-section-title">수주확도 ${label} 구간</span>
         <span class="report-section-meta">${metaLines}</span>
       </div>
       <div class="report-body">
@@ -987,24 +1546,25 @@ function buildReportSection(pct) {
     </div>`;
 }
 
-function buildProjectCard(c, cfg, fmt, changeType) {
+function buildProjectCard(c, changeType) {
   const salesInfo = c.sales ? ` &nbsp;·&nbsp; ${escHtml(c.sales)}` : '';
+  const moveInfo  = changeType === 'move' ? ` &nbsp;·&nbsp; ${INV_SECTION_LABEL[c.prevSection]} → ${INV_SECTION_LABEL[c.currSection]}` : '';
 
   // Category rows — only entries with any amount
   const catEntries = Object.entries(c.cats || {})
     .filter(([, v]) => Math.abs(v.prev) > 0.01 || Math.abs(v.curr) > 0.01);
 
   const catRows = catEntries.map(([name, v]) => {
-    const prevStr = (changeType === 'new' || Math.abs(v.prev) < 0.01) ? '-' : fmt(v.prev);
-    const currStr = (changeType === 'del' || Math.abs(v.curr) < 0.01) ? '-' : fmt(v.curr);
+    const prevStr = (changeType === 'new' || Math.abs(v.prev) < 0.01) ? '-' : fmtAmt(v.prev);
+    const currStr = (changeType === 'del' || Math.abs(v.curr) < 0.01) ? '-' : fmtAmt(v.curr);
     let diffStr, diffCls;
     if (changeType === 'new') {
-      diffStr = '+' + fmt(v.curr); diffCls = 'diff-up';
+      diffStr = '+' + fmtAmt(v.curr); diffCls = 'diff-up';
     } else if (changeType === 'del') {
-      diffStr = '-' + fmt(v.prev); diffCls = 'diff-down';
+      diffStr = '-' + fmtAmt(v.prev); diffCls = 'diff-down';
     } else {
       diffCls = v.diff > 0.01 ? 'diff-up' : v.diff < -0.01 ? 'diff-down' : 'diff-zero';
-      diffStr = v.diff > 0.01 ? '+' + fmt(v.diff) : v.diff < -0.01 ? fmt(v.diff) : '-';
+      diffStr = v.diff > 0.01 ? '+' + fmtAmt(v.diff) : v.diff < -0.01 ? fmtAmt(v.diff) : '-';
     }
     return `<tr>
       <td>${escHtml(name)}</td>
@@ -1015,16 +1575,16 @@ function buildProjectCard(c, cfg, fmt, changeType) {
   }).join('');
 
   // Total row
-  const totalPrev = changeType === 'new' ? '-' : fmt(c.prevAmt);
-  const totalCurr = changeType === 'del' ? '-' : fmt(c.currAmt);
+  const totalPrev = changeType === 'new' ? '-' : fmtAmt(c.prevAmt);
+  const totalCurr = changeType === 'del' ? '-' : fmtAmt(c.currAmt);
   let totalDiffStr, totalDiffCls;
   if (changeType === 'new') {
-    totalDiffStr = '+' + fmt(c.currAmt); totalDiffCls = 'diff-up';
+    totalDiffStr = '+' + fmtAmt(c.currAmt); totalDiffCls = 'diff-up';
   } else if (changeType === 'del') {
-    totalDiffStr = '-' + fmt(c.prevAmt); totalDiffCls = 'diff-down';
+    totalDiffStr = '-' + fmtAmt(c.prevAmt); totalDiffCls = 'diff-down';
   } else {
     totalDiffCls = c.diff > 0 ? 'diff-up' : 'diff-down';
-    totalDiffStr = (c.diff > 0 ? '+' : '') + fmt(c.diff);
+    totalDiffStr = (c.diff > 0 ? '+' : '') + fmtAmt(c.diff);
   }
 
   const tableHtml = `
@@ -1044,9 +1604,9 @@ function buildProjectCard(c, cfg, fmt, changeType) {
   return `
     <div class="project-card">
       <div class="pc-header">
-        <span class="pc-code">${escHtml(c.id)}</span>
+        <span class="pc-code">${escHtml(c.code)}</span>
         <span class="pc-name">${escHtml(c.name)}</span>
-        <span class="pc-cust">${escHtml(c.cust)}${salesInfo}</span>
+        <span class="pc-cust">${escHtml(c.cust)}${salesInfo}${moveInfo}</span>
       </div>
       ${tableHtml}
     </div>`;
