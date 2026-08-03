@@ -37,9 +37,6 @@
   .tab { padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; user-select: none; }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab:hover:not(.active) { color: var(--text); }
-  .tab.tab-disabled,
-  .tab.tab-disabled.active,
-  .tab.tab-disabled:hover { color: #5a5f78; border-bottom-color: transparent; }
 
   /* Main layout */
   main { padding: 32px 40px; max-width: 1400px; }
@@ -126,10 +123,6 @@
   .empty-state { text-align: center; padding: 80px 20px; color: var(--text-sub); }
   .empty-state .e-icon { font-size: 40px; margin-bottom: 14px; opacity: .5; }
   .empty-state p { font-size: 14px; }
-
-  .trend-placeholder { text-align: center; padding: 120px 20px; }
-  .trend-placeholder-title { font-size: 22px; font-weight: 700; color: #5a5f78; margin-bottom: 10px; }
-  .trend-placeholder-sub { font-size: 14px; color: #5a5f78; }
 
   .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .code { font-family: monospace; font-size: 11px; color: var(--text-sub); }
@@ -336,6 +329,18 @@
   .rev2-footnote { font-size: 11px; color: var(--text-sub); margin-top: 10px; }
   @media (max-width: 900px) { .rev2-summary-row { grid-template-columns: repeat(2, 1fr); } }
 
+  .rev2-legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13px; color: var(--text); }
+  .rev2-legend-item { display: flex; align-items: center; gap: 6px; }
+  .rev2-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .rev2-legend-dot-dashed { width: 16px; height: 0; border-top: 2px dashed; display: inline-block; flex-shrink: 0; }
+  .rev2-pipeline-notice {
+    font-size: 12px; color: var(--text-sub); background: var(--surface2);
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;
+  }
+  .chart-wrap-sm { position: relative; height: 130px; }
+  .rev2-pipe-legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--text-sub); }
+  .rev2-pipe-legend-item { display: flex; align-items: center; gap: 6px; }
+
   @media (max-width: 900px) {
     main { padding: 20px; }
     header { padding: 20px 20px 0; }
@@ -361,7 +366,6 @@
     <div class="tab" data-tab="sales" onclick="switchTab('sales')">매출 비교</div>
     <div class="tab" data-tab="report" onclick="switchTab('report')">변동보고서</div>
     <div class="tab" data-tab="revenue-trend" onclick="switchTab('revenue-trend')">매출 추이</div>
-    <div class="tab tab-disabled" data-tab="pipeline-trend" onclick="switchTab('pipeline-trend')">파이프라인 추이 (개편중)</div>
   </div>
 </header>
 
@@ -450,53 +454,6 @@
     </div>
   </div>
 
-
-  <!-- Pipeline trend tab — 2026-08-03부터 개편 작업으로 인해 임시로 안내 화면만 표시.
-       기존 UI는 복구 가능하도록 아래에 주석 처리로 보존. 복구 시: 이 안내 블록을 지우고
-       주석을 해제한 뒤, switchTab()의 pipeline-trend 분기에서 renderPipelineChart() 호출을 되살릴 것. -->
-  <div id="tab-pipeline-trend" class="tab-content">
-    <div class="trend-placeholder">
-      <div class="trend-placeholder-title">개편 중입니다</div>
-      <div class="trend-placeholder-sub">현재 이 기능은 개선 작업이 진행 중입니다. 인벤토리 비교 탭을 이용해 주세요.</div>
-    </div>
-    <!--
-    <div class="trend-layout">
-
-      <div class="trend-input-section">
-        <div class="trend-input-header">
-          <span class="trend-input-title">주차별 파이프라인 데이터 입력</span>
-          <button class="trend-toggle-btn" onclick="togglePipelineInput()">접기 / 펼치기</button>
-        </div>
-        <div id="pipeline-input-body">
-          <div class="json-hint">
-            JSON 배열. 필드: <code>week</code>(YYMMDD) · <code>p100</code>/<code>p90</code>/<code>p75</code>/<code>p50</code>(백만원)
-            · <code>new</code>/<code>won</code>/<code>lost</code>: <code>{"count":N,"amount":M}</code>
-          </div>
-          <textarea class="json-textarea" id="pipeline-json"
-            placeholder='[{"week":"260106","p100":5000,"p90":8000,"p75":12000,"p50":3000,"new":{"count":2,"amount":1500},"won":{"count":1,"amount":800},"lost":{"count":0,"amount":0}}]'></textarea>
-          <div class="btn-row" style="margin-bottom:0">
-            <button class="btn btn-primary" onclick="savePipelineData()">저장 및 차트 갱신</button>
-            <button class="btn btn-secondary" onclick="clearPipelineData()">초기화</button>
-            <span class="status-msg" id="pipeline-data-msg"></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="chart-card">
-        <div class="chart-card-title">수주확도 구간별 파이프라인 잔액 추이 (백만원)</div>
-        <div class="chart-legend">
-          <div class="legend-item"><span class="legend-line" style="background:#f97316"></span>100%</div>
-          <div class="legend-item"><span class="legend-line" style="background:#4f6ef7"></span>90%</div>
-          <div class="legend-item"><span class="legend-line" style="background:#22c55e"></span>75%</div>
-          <div class="legend-item"><span class="legend-line" style="background:#f59e0b"></span>50%(F)</div>
-        </div>
-        <div class="chart-wrap"><canvas id="pipeline-canvas"></canvas></div>
-      </div>
-
-    </div>
-    -->
-  </div>
-
   <!-- Revenue trend tab -->
   <div id="tab-revenue-trend" class="tab-content">
     <div class="trend-layout">
@@ -525,24 +482,21 @@
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
         <div class="chart-card">
-          <div class="chart-card-title">누적 실적 vs 누적 목표</div>
+          <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
+          <div class="rev2-legend" id="rev2-main-legend"></div>
+          <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
           <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
-          <div class="rev2-footnote">※ 분기 경계(3·6·9·12월)는 실제 목표값이며, 중간 월은 분기 목표를 균등 배분한 참고값입니다</div>
+          <div class="rev2-footnote" id="rev2-footnote1"></div>
+          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
         </div>
 
-        <div class="chart-card">
-          <div class="chart-card-title">누적 달성률 추이</div>
-          <div class="chart-wrap"><canvas id="rev2-chart2"></canvas></div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-card-title">분기별 목표 대비 실적</div>
-          <div class="chart-wrap"><canvas id="rev2-chart3"></canvas></div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-card-title">항목별 누적 구성</div>
-          <div class="chart-wrap"><canvas id="rev2-chart4"></canvas></div>
+        <div class="chart-card" id="rev2-pipe-card">
+          <div class="chart-card-title">확도별 파이프라인 구성</div>
+          <div class="rev2-pipeline-notice" id="rev2-pipe-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
+          <div id="rev2-pipe-chart-area">
+            <div class="chart-wrap-sm"><canvas id="rev2-chart-pipe"></canvas></div>
+            <div class="rev2-pipe-legend" id="rev2-pipe-legend"></div>
+          </div>
         </div>
       </div>
 
@@ -824,7 +778,7 @@ function getWeekDateInfo(week) {
   return { date: dates[0], mismatch: uniqueRaw.length > 1, values: uniqueRaw };
 }
 
-// 두 주차의 날짜를 비교해 간격을 계산한다. 연도는 앱 전역과 동일하게 2026년 기준(ALL_WEEKS와 동일).
+// 두 주차의 날짜를 비교해 간격을 계산한다. 연도는 앱 전역과 동일하게 2026년 기준.
 function getComparePeriodInfo() {
   const prevInfo = getWeekDateInfo('prev');
   const currInfo = getWeekDateInfo('curr');
@@ -1076,7 +1030,6 @@ function switchTab(t) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + t).classList.add('active');
   if (t === 'report') generateReport();
-  // 파이프라인 추이: 개편중 안내 화면만 표시 — 복구 시 renderPipelineChart() 호출을 되살릴 것
   if (t === 'revenue-trend') renderSalesTrend();
 }
 
@@ -1870,8 +1823,8 @@ function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── 파이프라인 / 매출 추이 공통 ──────────────────────────────────────────────
-
+// ─── 파이프라인 추이 (탭 제거됨, 2026-08-03 — 아래는 복구용으로 주석 보존) ─────
+/*
 // 260106(Jan 6) ~ 261229(Dec 29) 52주 라벨 생성
 const ALL_WEEKS = (() => {
   const weeks = [];
@@ -1887,8 +1840,6 @@ const ALL_WEEKS = (() => {
 })();
 
 let pipelineChart = null;
-
-// ─── 파이프라인 추이 (개편중 — 아래 함수들은 호출되지 않지만 복구를 위해 보존) ──
 
 function loadPipelineData() {
   try { return JSON.parse(localStorage.getItem('pipeline_weekly_data') || '[]'); }
@@ -1982,6 +1933,7 @@ function renderPipelineChart() {
     }
   });
 }
+*/
 
 // ─── 매출 추이: 목표 상수 ─────────────────────────────────────────────────────
 // 단위: 백만원. 본부 연간 합계 82,068백만 / 1팀 연간 합계 29,062백만 — 검증용
@@ -2005,7 +1957,7 @@ const SALES_QUARTERS   = ['Q1', 'Q2', 'Q3', 'Q4'];
 
 let SALES_PARSED = null; // parseSalesExcel() 결과
 let SALES_SCOPE  = '본부';
-let salesChart1 = null, salesChart2 = null, salesChart3 = null, salesChart4 = null;
+let salesChart1 = null, salesChartPipe = null;
 
 // ─── 매출 추이: 단위 변환 ─────────────────────────────────────────────────────
 // 목표 상수는 백만원 단위(÷100 = 억), 엑셀 실적은 원 단위(÷100,000,000 = 억)
@@ -2201,7 +2153,6 @@ function buildMonthlySeries(scope) {
 }
 
 function monthQuarter(m) { return SALES_QUARTERS[Math.floor((m - 1) / 3)]; }
-function quarterMonths(q) { const i = SALES_QUARTERS.indexOf(q); return [i * 3 + 1, i * 3 + 2, i * 3 + 3]; }
 
 function quarterTargetTotal(scope, q) {
   const t = SALES_TARGET_2026[scope];
@@ -2230,32 +2181,40 @@ function buildCumulativeActual(series) {
 }
 
 // 4개 항목(제품/상품/용역/유지보수)의 월별 누적(원 단위). 마지막 실측월 이후는 null.
-function buildCumulativeByCategory(series) {
-  let last = -1;
-  series.forEach((s, i) => { if (s.hasData) last = i; });
-  const running = { product: 0, goods: 0, service: 0, maint: 0 };
-  const result  = { product: [], goods: [], service: [], maint: [] };
-  series.forEach((s, i) => {
-    if (i > last) {
-      result.product.push(null); result.goods.push(null); result.service.push(null); result.maint.push(null);
-      return;
-    }
-    running.product += (s.cats ? s.cats.product : 0);
-    running.goods    += (s.cats ? s.cats.goods   : 0);
-    running.service  += (s.cats ? s.cats.service : 0);
-    running.maint    += (s.cats ? s.cats.maint   : 0);
-    result.product.push(running.product);
-    result.goods.push(running.goods);
-    result.service.push(running.service);
-    result.maint.push(running.maint);
+function rateColor(r) { return r >= 100 ? 'var(--up)' : r >= 80 ? '#f5c518' : 'var(--down)'; }
+
+// ─── 매출 추이: 인벤토리 비교 탭 연동 (파이프라인 전망) ────────────────────────
+// 대상 구간: 100/90/75/50%(F) — 50%(U)/25%/0%는 제외
+
+const PIPELINE_SECTIONS = ['100', '90', '75', '50f'];
+
+function getPipelineBySectionEok(scope) {
+  if (!INV_RESULT) return null; // 인벤토리 비교 탭에서 분석이 아직 실행되지 않음
+  const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
+  const result = {};
+  PIPELINE_SECTIONS.forEach(sectionId => {
+    const rows = (INV_FILES.curr[sectionId] && INV_FILES.curr[sectionId].rows) || [];
+    let sum = 0;
+    rows.forEach(r => {
+      if (scope === '팀1') {
+        const rep = String(r['영업담당자'] || '').replace(/\s/g, '');
+        if (!repsNorm.includes(rep)) return;
+      }
+      sum += (r['총합계'] || 0); // 백만원
+    });
+    result[sectionId] = millionToEok(sum);
   });
   return result;
 }
 
-function rateColor(r) { return r >= 100 ? 'var(--up)' : r >= 80 ? '#f5c518' : 'var(--down)'; }
+function getPipelineEok(scope) {
+  const bySection = getPipelineBySectionEok(scope);
+  if (!bySection) return null;
+  return PIPELINE_SECTIONS.reduce((s, id) => s + bySection[id], 0);
+}
 
-// 현재 시점(마지막 실측월) 기준 누적 목표 대비 실적을 계산
-function computeSalesSummary(scope, series) {
+// 현재 시점(마지막 실측월) 기준 누적 목표 대비 실적 + 파이프라인을 계산
+function computeSalesSummary(scope, series, pipelineEok) {
   const annualTargetEok = millionToEok(annualTargetTotal(scope));
   const cumActualWon = buildCumulativeActual(series);
   let lastIdx = -1;
@@ -2264,49 +2223,29 @@ function computeSalesSummary(scope, series) {
   const lastMonth = lastIdx >= 0 ? lastIdx + 1 : 0;
 
   const currentCumTargetEok = lastMonth > 0 ? millionToEok(cumulativeTargetAt(scope, lastMonth)) : 0;
-  const gapEok  = cumActualEok - currentCumTargetEok;
   const cumRate = currentCumTargetEok > 0 ? (cumActualEok / currentCumTargetEok * 100) : 0;
-  const remainEok = annualTargetEok - cumActualEok;
 
-  return { annualTargetEok, cumActualEok, currentCumTargetEok, gapEok, cumRate, remainEok };
+  const pipeEok = pipelineEok != null ? pipelineEok : 0;
+  const combinedEok  = cumActualEok + pipeEok;
+  const shortfallEok = annualTargetEok - combinedEok;
+
+  return { annualTargetEok, cumActualEok, pipelineEok, combinedEok, shortfallEok, cumRate, lastIdx };
 }
 
-function renderSalesSummary(scope, series) {
-  const s = computeSalesSummary(scope, series);
-  const gapColor = s.gapEok >= 0 ? 'var(--up)' : 'var(--down)';
-  const gapStr   = (s.gapEok >= 0 ? '+' : '') + s.gapEok.toFixed(1) + '억';
+function renderSalesSummary(scope, series, pipelineEok) {
+  const s = computeSalesSummary(scope, series, pipelineEok);
+  const pipeStr = s.pipelineEok != null ? s.pipelineEok.toFixed(1) + '억' : '-';
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.cumActualEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">현재 시점 누적 목표</div><div class="s-value">${s.currentCumTargetEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">목표 대비 격차</div><div class="s-value" style="color:${gapColor}">${gapStr}</div></div>
+    <div class="summary-card"><div class="s-label">파이프라인(50%F 이상)</div><div class="s-value">${pipeStr}</div></div>
+    <div class="summary-card"><div class="s-label">실적+파이프라인 합계</div><div class="s-value">${s.combinedEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">목표 대비 부족액</div><div class="s-value" style="color:var(--down)">${s.shortfallEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%</div></div>
-    <div class="summary-card"><div class="s-label">잔여 필요액</div><div class="s-value">${s.remainEok.toFixed(1)}억</div></div>
   `;
 }
 
 // ─── 매출 추이: 차트 렌더링 (Chart.js) ────────────────────────────────────────
-
-function buildRatioLabelPlugin(ratios) {
-  return {
-    id: 'salesRatioLabelPlugin',
-    afterDatasetsDraw(chart) {
-      const { ctx } = chart;
-      const meta = chart.getDatasetMeta(1); // 실적 데이터셋 위에 표시
-      meta.data.forEach((el, idx) => {
-        const r = ratios[idx];
-        if (r == null) return;
-        const color = r >= 100 ? '#22c55e' : r >= 80 ? '#f5c518' : '#ef4444';
-        ctx.save();
-        ctx.fillStyle = color;
-        ctx.font = '700 13px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(r.toFixed(1) + '%', el.x, el.y - 10);
-        ctx.restore();
-      });
-    }
-  };
-}
 
 const salesChartCommonScales = {
   x: {
@@ -2320,178 +2259,115 @@ const salesChartCommonScales = {
   }
 };
 
-const SALES_QUARTER_BOUNDARY_MONTHS = [3, 6, 9, 12];
-
-// [차트 1] 누적 실적 vs 누적 목표 — 메인 차트
-function renderSalesChart1(scope, series) {
+// [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
+function renderSalesChart1(scope, series, pipelineEok) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
   if (salesChart1) salesChart1.destroy();
 
   const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
   const cumActualWon = buildCumulativeActual(series);
   const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
-  const forecastIdx  = series.findIndex(s => s.isForecast);
-  const pointRadii   = series.map(s => SALES_QUARTER_BOUNDARY_MONTHS.includes(s.month) ? 6 : 3);
+
+  let lastIdx = -1;
+  cumActualEok.forEach((v, i) => { if (v != null) lastIdx = i; });
+
+  // 파이프라인 반영 전망: 마지막 실적 월의 누적값에서 시작해 잔여 월에 균등 배분
+  let pipelineArr = null;
+  let pipelineStartMonth = null;
+  if (pipelineEok != null && lastIdx >= 0) {
+    const remaining = 12 - (lastIdx + 1);
+    pipelineArr = new Array(12).fill(null);
+    pipelineArr[lastIdx] = cumActualEok[lastIdx];
+    if (remaining > 0) {
+      const perMonth = pipelineEok / remaining;
+      for (let i = 1; i <= remaining; i++) pipelineArr[lastIdx + i] = cumActualEok[lastIdx] + perMonth * i;
+      pipelineStartMonth = lastIdx + 2; // 마지막 실적월 다음 달 (1-based)
+    }
+  }
+
+  const datasets = [
+    { label: '누적 실적', data: cumActualEok, borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.10)',
+      borderWidth: 2, fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 },
+  ];
+  if (pipelineArr) {
+    datasets.push({ label: '파이프라인 반영 전망', data: pipelineArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
+      borderWidth: 2, borderDash: [5, 4], fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 });
+  }
+  datasets.push({ label: '누적 목표', data: cumTargetEok, borderColor: '#e34948', backgroundColor: 'transparent',
+    borderWidth: 1.5, fill: false, pointRadius: 0, tension: 0.1 });
 
   salesChart1 = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: series.map(s => s.month + '월'),
-      datasets: [
-        { label: '누적 목표', data: cumTargetEok, borderColor: '#e74c3c',
-          borderWidth: 2, pointRadius: pointRadii, pointBackgroundColor: '#e74c3c',
-          tension: 0.1, fill: false },
-        { label: '누적 실적', data: cumActualEok, borderColor: '#4a9eff', backgroundColor: 'rgba(74,158,255,0.15)',
-          borderWidth: 3, pointRadius: pointRadii, pointBackgroundColor: '#4a9eff',
-          tension: 0.1, fill: true, spanGaps: false,
-          segment: { borderDash: ctx2 => (forecastIdx >= 0 && ctx2.p1DataIndex === forecastIdx) ? [6, 3] : undefined } },
-      ]
-    },
+    data: { labels: series.map(s => s.month + '월'), datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: salesChartCommonScales,
       plugins: {
-        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        legend: { display: false },
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
-          callbacks: {
-            label: item => `${item.dataset.label}: ${item.formattedValue}억`,
-            afterBody: items => {
-              const idx = items[0].dataIndex;
-              const t = cumTargetEok[idx], a = cumActualEok[idx];
-              if (a == null) return [];
-              const gap = a - t;
-              const rate = t > 0 ? (a / t * 100) : 0;
-              return ['', `격차: ${gap >= 0 ? '+' : ''}${gap.toFixed(1)}억`, `달성률: ${rate.toFixed(1)}%`];
-            }
-          }
+          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
         }
       }
     }
   });
+
+  // 커스텀 HTML 범례
+  const annualTargetEok = millionToEok(annualTargetTotal(scope));
+  const actualNow = lastIdx >= 0 ? cumActualEok[lastIdx] : 0;
+  let legendHtml = `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#2a78d6"></span>누적 실적 ${actualNow.toFixed(1)}억</span>`;
+  if (pipelineEok != null) {
+    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>파이프라인 ${pipelineEok.toFixed(1)}억 (점선)</span>`;
+  }
+  legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#e34948"></span>누적 목표 ${annualTargetEok.toFixed(1)}억</span>`;
+  document.getElementById('rev2-main-legend').innerHTML = legendHtml;
+
+  document.getElementById('rev2-pipeline-notice').style.display = (pipelineEok == null) ? '' : 'none';
+  document.getElementById('rev2-footnote1').textContent = pipelineStartMonth
+    ? `※ ${pipelineStartMonth}월 이후 초록 구간은 50%(F) 이상 파이프라인을 잔여 월에 균등 배분한 참고값이며, 실제 매출 청구 시점과 다를 수 있습니다.`
+    : '';
 }
 
-// [차트 2] 누적 달성률 추이
-function renderSalesChart2(scope, series) {
-  const ctx = document.getElementById('rev2-chart2').getContext('2d');
-  if (salesChart2) salesChart2.destroy();
+// [보조 차트] 확도별 파이프라인 구성 (가로 누적 막대)
+function renderPipelineCompositionChart(scope) {
+  const notice = document.getElementById('rev2-pipe-notice');
+  const area   = document.getElementById('rev2-pipe-chart-area');
+  const bySection = getPipelineBySectionEok(scope);
 
-  const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
-  const cumActualWon = buildCumulativeActual(series);
-  const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
-  const rateSeries = cumActualEok.map((a, i) => a == null ? null : (cumTargetEok[i] > 0 ? (a / cumTargetEok[i] * 100) : null));
+  if (!bySection) {
+    notice.style.display = '';
+    area.style.display = 'none';
+    return;
+  }
+  notice.style.display = 'none';
+  area.style.display = '';
 
-  salesChart2 = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: series.map(s => s.month + '월'),
-      datasets: [
-        { label: '누적 달성률', data: rateSeries, borderColor: '#22c55e', borderWidth: 3,
-          pointRadius: 3, tension: 0.1, fill: false, spanGaps: false,
-          segment: {
-            borderColor: ctx2 => {
-              const avg = (ctx2.p0.parsed.y + ctx2.p1.parsed.y) / 2;
-              return avg >= 100 ? '#22c55e' : '#f97316';
-            }
-          }
-        },
-        { label: '100% 기준선', data: series.map(() => 100), borderColor: '#8890b5',
-          borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: {
-        x: salesChartCommonScales.x,
-        y: {
-          ticks: { color: '#8890b5', font: { size: 11 }, callback: v => v + '%' },
-          grid:  { color: '#1e2136' },
-          title: { display: true, text: '%', color: '#8890b5', font: { size: 11 } },
-        }
-      },
-      plugins: {
-        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
-        tooltip: {
-          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
-          titleColor: '#e8eaf6', bodyColor: '#8890b5',
-          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}%` },
-        }
-      }
-    }
-  });
-}
+  const nameMap  = { '100': '100%', '90': '90%', '75': '75%', '50f': '50%(F)' };
+  const colorMap = { '100': '#2a78d6', '90': '#1baf7a', '75': '#eda100', '50f': '#eb6834' };
+  const total = PIPELINE_SECTIONS.reduce((s, id) => s + bySection[id], 0);
 
-// [차트 3] 분기별 목표 대비 실적
-function renderSalesChart3(scope, series) {
-  const ctx = document.getElementById('rev2-chart3').getContext('2d');
-  if (salesChart3) salesChart3.destroy();
+  const ctx = document.getElementById('rev2-chart-pipe').getContext('2d');
+  if (salesChartPipe) salesChartPipe.destroy();
 
-  const targetsEok = SALES_QUARTERS.map(q => millionToEok(quarterTargetTotal(scope, q)));
-  const actualsEok = SALES_QUARTERS.map(q => {
-    const monthsInQ = quarterMonths(q);
-    const anyData = monthsInQ.some(m => series[m - 1].hasData);
-    if (!anyData) return null; // 실적이 없는 미래 분기는 막대를 그리지 않음
-    const sum = monthsInQ.reduce((s, m) => s + (series[m - 1].hasData ? series[m - 1].total : 0), 0);
-    return wonToEok(sum);
-  });
-  const ratios = SALES_QUARTERS.map((q, i) => (targetsEok[i] > 0 && actualsEok[i] != null) ? (actualsEok[i] / targetsEok[i] * 100) : null);
-
-  salesChart3 = new Chart(ctx, {
+  salesChartPipe = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: SALES_QUARTERS,
-      datasets: [
-        { label: '목표', data: targetsEok, backgroundColor: '#ef4444', borderRadius: 4 },
-        { label: '실적', data: actualsEok, backgroundColor: '#4f6ef7', borderRadius: 4 },
-      ]
+      labels: [`파이프라인 ${total.toFixed(1)}억`],
+      datasets: PIPELINE_SECTIONS.map(id => ({
+        label: nameMap[id], data: [bySection[id]], backgroundColor: colorMap[id], stack: 'pipe',
+      })),
     },
     options: {
+      indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
-      scales: salesChartCommonScales,
-      plugins: {
-        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
-        tooltip: {
-          backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
-          titleColor: '#e8eaf6', bodyColor: '#8890b5',
-          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
-        }
-      }
-    },
-    plugins: [buildRatioLabelPlugin(ratios)]
-  });
-}
-
-// [차트 4] 항목별 누적 구성 (누적 영역 그래프)
-function renderSalesChart4(scope, series) {
-  const ctx = document.getElementById('rev2-chart4').getContext('2d');
-  if (salesChart4) salesChart4.destroy();
-
-  const cats = buildCumulativeByCategory(series);
-  const toEokArr = arr => arr.map(v => v == null ? null : wonToEok(v));
-
-  salesChart4 = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: series.map(s => s.month + '월'),
-      datasets: [
-        { label: '제품',     data: toEokArr(cats.product), borderColor: '#4f6ef7', backgroundColor: 'rgba(79,110,247,0.55)',  fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
-        { label: '상품',     data: toEokArr(cats.goods),   borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.55)',   fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
-        { label: '용역',     data: toEokArr(cats.service), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.55)', fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
-        { label: '유지보수', data: toEokArr(cats.maint),   borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.55)',fill: true, pointRadius: 0, tension: 0.2, spanGaps: false },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
       scales: {
-        x: salesChartCommonScales.x,
-        y: { ...salesChartCommonScales.y, stacked: true },
+        x: { stacked: true, ticks: { color: '#8890b5', font: { size: 11 }, callback: v => v.toFixed(0) + '억' }, grid: { color: '#1e2136' } },
+        y: { stacked: true, ticks: { color: '#8890b5', font: { size: 12 } }, grid: { display: false } },
       },
       plugins: {
-        legend: { labels: { color: '#8890b5', boxWidth: 14, font: { size: 12 } } },
+        legend: { display: false },
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
@@ -2500,6 +2376,10 @@ function renderSalesChart4(scope, series) {
       }
     }
   });
+
+  document.getElementById('rev2-pipe-legend').innerHTML = PIPELINE_SECTIONS.map(id =>
+    `<span class="rev2-pipe-legend-item"><span class="rev2-legend-dot" style="background:${colorMap[id]}"></span>${nameMap[id]} ${bySection[id].toFixed(1)}억</span>`
+  ).join('');
 }
 
 const SALES_EMPTY_MSG_DEFAULT = '주간 영업회의자료를 업로드하면 목표 대비 매출 추이를 확인할 수 있습니다.';
@@ -2533,11 +2413,10 @@ function renderSalesTrend() {
   content.style.display = '';
 
   const series = buildMonthlySeries(SALES_SCOPE);
-  renderSalesSummary(SALES_SCOPE, series);
-  renderSalesChart1(SALES_SCOPE, series);
-  renderSalesChart2(SALES_SCOPE, series);
-  renderSalesChart3(SALES_SCOPE, series);
-  renderSalesChart4(SALES_SCOPE, series);
+  const pipelineEok = getPipelineEok(SALES_SCOPE);
+  renderSalesSummary(SALES_SCOPE, series, pipelineEok);
+  renderSalesChart1(SALES_SCOPE, series, pipelineEok);
+  renderPipelineCompositionChart(SALES_SCOPE);
 }
 
 function setSalesScope(scope) {
