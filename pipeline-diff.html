@@ -1137,7 +1137,7 @@ function buildSectionReportText(sectionId) {
     if (it.type === 'new')       detail = '신규';
     else if (it.type === 'move') detail = `${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[it.currSection]}`;
     else if (it.type === 'del')  detail = `삭제 (전주 ${fmtAmt(it.prevAmt)}백만)`;
-    else                         detail = `전주 ${fmtAmt(it.prevAmt)}백만 → 금주 ${fmtAmt(it.currAmt)}백만`;
+    else                         detail = `${it.diff >= 0 ? '▲' : '▼'}${fmtAmt(it.diff)}백만`;
     const amt = it.type === 'del' ? it.prevAmt : it.currAmt;
     return ` - ${it.code} ${it.name} / ${fmtAmt(amt)}백만 / ${detail}`;
   });
