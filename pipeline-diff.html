@@ -341,6 +341,16 @@
   .rev2-pipe-legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--text-sub); }
   .rev2-pipe-legend-item { display: flex; align-items: center; gap: 6px; }
 
+  .rev2-unmatched-notice { font-size: 11px; color: var(--text-sub); margin-top: 10px; }
+  .rev2-detail-link { color: var(--accent); cursor: pointer; margin-left: 6px; text-decoration: none; }
+  .rev2-detail-link:hover { text-decoration: underline; }
+  .rev2-unmatched-list { margin-top: 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .rev2-unmatched-row { display: flex; gap: 10px; padding: 6px 10px; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+  .rev2-unmatched-row:last-child { border-bottom: none; }
+  .rev2-unmatched-row .code { font-family: monospace; color: var(--accent); flex-shrink: 0; width: 110px; }
+  .rev2-unmatched-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rev2-unmatched-row .amt  { flex-shrink: 0; color: var(--text-sub); }
+
   @media (max-width: 900px) {
     main { padding: 20px; }
     header { padding: 20px 20px 0; }
@@ -486,7 +496,14 @@
           <div class="rev2-legend" id="rev2-main-legend"></div>
           <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
           <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
+          <div class="rev2-footnote">※ 파이프라인은 100% 구간의 미청구 잔여분과 90%·75%·50%(F) 구간의 수주금액을 합산한 값입니다. 100%는 계약 완료 건이므로 이미 매출로 청구된 금액을 차감했습니다.</div>
+          <div class="rev2-footnote">※ 금액은 수주금액 기준으로 달성 예상 그래프를 작성하되, 파이프라인 합계는 수주금액 전체를 기준으로 합니다.</div>
           <div class="rev2-footnote" id="rev2-footnote1"></div>
+          <div class="rev2-unmatched-notice" id="rev2-unmatched-notice" style="display:none">
+            <span id="rev2-unmatched-text"></span>
+            <a href="#" class="rev2-detail-link" id="rev2-unmatched-toggle" onclick="toggleUnmatchedDetail(event)">[상세보기]</a>
+            <div class="rev2-unmatched-list" id="rev2-unmatched-list" style="display:none"></div>
+          </div>
           <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
         </div>
 
@@ -2184,37 +2201,85 @@ function buildCumulativeActual(series) {
 function rateColor(r) { return r >= 100 ? 'var(--up)' : r >= 80 ? '#f5c518' : 'var(--down)'; }
 
 // ─── 매출 추이: 인벤토리 비교 탭 연동 (파이프라인 전망) ────────────────────────
-// 대상 구간: 100/90/75/50%(F) — 50%(U)/25%/0%는 제외
+// 파이프라인 = ① 100% 구간 미청구 잔여분 + ② 90%·75%·50%(F) 구간 수주금액 전액
+// 50%(U)/25%/0%는 제외
 
 const PIPELINE_SECTIONS = ['100', '90', '75', '50f'];
+const PIPELINE_LABELS   = { '100': '100% 잔여', '90': '90%', '75': '75%', '50f': '50%(F)' };
+const PIPELINE_COLORS   = { '100': '#2a78d6', '90': '#1baf7a', '75': '#eda100', '50f': '#eb6834' };
 
-function getPipelineBySectionEok(scope) {
-  if (!INV_RESULT) return null; // 인벤토리 비교 탭에서 분석이 아직 실행되지 않음
-  const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
-  const result = {};
-  PIPELINE_SECTIONS.forEach(sectionId => {
-    const rows = (INV_FILES.curr[sectionId] && INV_FILES.curr[sectionId].rows) || [];
-    let sum = 0;
-    rows.forEach(r => {
-      if (scope === '팀1') {
-        const rep = String(r['영업담당자'] || '').replace(/\s/g, '');
-        if (!repsNorm.includes(rep)) return;
-      }
-      sum += (r['총합계'] || 0); // 백만원
-    });
-    result[sectionId] = millionToEok(sum);
+// 매출 상세 블록(SALES_PARSED.teamRows)의 실적만으로 프로젝트코드별 누적 매출을 집계 (원 단위)
+// teamRows는 "NO" 헤더 아래 실제 청구 라인만 담고 있어 "매출 예상액" 행은 애초에 포함되지 않는다.
+function getInvoicedAmountByProjectCode() {
+  const map = {};
+  (SALES_PARSED && SALES_PARSED.teamRows || []).forEach(r => {
+    map[r.code] = (map[r.code] || 0) + (r.total || 0);
   });
-  return result;
+  return map;
 }
 
-function getPipelineEok(scope) {
-  const bySection = getPipelineBySectionEok(scope);
-  if (!bySection) return null;
-  return PIPELINE_SECTIONS.reduce((s, id) => s + bySection[id], 0);
+function computePipelineData(scope) {
+  if (!INV_RESULT) return null; // 인벤토리 비교 탭에서 분석이 아직 실행되지 않음
+  const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
+  const inScope = row => {
+    if (scope !== '팀1') return true;
+    const rep = String(row['영업담당자'] || '').replace(/\s/g, '');
+    return repsNorm.includes(rep);
+  };
+
+  // ① 100% 잔여분
+  const invoicedMap = getInvoicedAmountByProjectCode();
+  const rows100 = (INV_FILES.curr['100'] && INV_FILES.curr['100'].rows) || [];
+  let orderTotalMillion = 0, invoicedTotalMillion = 0, remainder100Million = 0;
+  let matchedCount = 0, unmatchedCount = 0;
+  const unmatched = [];
+
+  rows100.filter(inScope).forEach(r => {
+    const code  = String(r['프로젝트코드'] || '').trim();
+    const order = r['총합계'] || 0; // 백만원
+    orderTotalMillion += order;
+    const invoicedWon = invoicedMap[code];
+    if (invoicedWon != null) {
+      matchedCount++;
+      const invoicedMillion = invoicedWon / 1000000; // 원 -> 백만원
+      invoicedTotalMillion += invoicedMillion;
+      remainder100Million += Math.max(0, order - invoicedMillion);
+    } else {
+      unmatchedCount++;
+      unmatched.push({ code, name: r['프로젝트명'] || '', amountEok: millionToEok(order) });
+      remainder100Million += order; // 매칭 실패 시 차감 없이 전액
+    }
+  });
+
+  // ② 90% / 75% / 50%(F) 전액
+  const otherMillion = {};
+  ['90', '75', '50f'].forEach(id => {
+    const rows = (INV_FILES.curr[id] && INV_FILES.curr[id].rows) || [];
+    otherMillion[id] = rows.filter(inScope).reduce((s, r) => s + (r['총합계'] || 0), 0);
+  });
+
+  const bySection = {
+    '100': millionToEok(remainder100Million),
+    '90':  millionToEok(otherMillion['90']),
+    '75':  millionToEok(otherMillion['75']),
+    '50f': millionToEok(otherMillion['50f']),
+  };
+  const totalEok = PIPELINE_SECTIONS.reduce((s, id) => s + bySection[id], 0);
+
+  console.log('[파이프라인 계산]', scope, {
+    '100% 수주금액 합계(억)': millionToEok(orderTotalMillion).toFixed(1),
+    '차감된 매출 합계(억)':   millionToEok(invoicedTotalMillion).toFixed(1),
+    '100% 잔여분(억)':        bySection['100'].toFixed(1),
+    '매칭 성공(건)': matchedCount, '매칭 실패(건)': unmatchedCount,
+    '90%(억)': bySection['90'].toFixed(1), '75%(억)': bySection['75'].toFixed(1), '50%(F)(억)': bySection['50f'].toFixed(1),
+    '파이프라인 합계(억)': totalEok.toFixed(1),
+  });
+
+  return { bySection, totalEok, matchedCount, unmatchedCount, unmatched };
 }
 
 // 현재 시점(마지막 실측월) 기준 누적 목표 대비 실적 + 파이프라인을 계산
-function computeSalesSummary(scope, series, pipelineEok) {
+function computeSalesSummary(scope, series, pipelineData) {
   const annualTargetEok = millionToEok(annualTargetTotal(scope));
   const cumActualWon = buildCumulativeActual(series);
   let lastIdx = -1;
@@ -2225,24 +2290,56 @@ function computeSalesSummary(scope, series, pipelineEok) {
   const currentCumTargetEok = lastMonth > 0 ? millionToEok(cumulativeTargetAt(scope, lastMonth)) : 0;
   const cumRate = currentCumTargetEok > 0 ? (cumActualEok / currentCumTargetEok * 100) : 0;
 
+  const pipelineEok = pipelineData ? pipelineData.totalEok : null;
   const pipeEok = pipelineEok != null ? pipelineEok : 0;
   const combinedEok  = cumActualEok + pipeEok;
-  const shortfallEok = annualTargetEok - combinedEok;
+  const shortfallEok = annualTargetEok - combinedEok; // 양수=부족, 음수=초과
 
-  return { annualTargetEok, cumActualEok, pipelineEok, combinedEok, shortfallEok, cumRate, lastIdx };
+  return { annualTargetEok, cumActualEok, pipelineEok, pipelineData, combinedEok, shortfallEok, cumRate, lastIdx };
 }
 
-function renderSalesSummary(scope, series, pipelineEok) {
-  const s = computeSalesSummary(scope, series, pipelineEok);
+function renderSalesSummary(scope, series, pipelineData) {
+  const s = computeSalesSummary(scope, series, pipelineData);
   const pipeStr = s.pipelineEok != null ? s.pipelineEok.toFixed(1) + '억' : '-';
+  const pipeSub = s.pipelineData
+    ? `100% 잔여 ${s.pipelineData.bySection['100'].toFixed(1)}억 · 90/75/50F ${(s.pipelineData.bySection['90'] + s.pipelineData.bySection['75'] + s.pipelineData.bySection['50f']).toFixed(1)}억`
+    : '';
+
+  const shortfallPositive = s.shortfallEok >= 0;
+  const shortfallLabel = shortfallPositive ? '목표 대비 부족액' : '목표 대비 초과액';
+  const shortfallColor = shortfallPositive ? 'var(--down)' : 'var(--up)';
+  const shortfallStr   = Math.abs(s.shortfallEok).toFixed(1) + '억';
+
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.cumActualEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">파이프라인(50%F 이상)</div><div class="s-value">${pipeStr}</div></div>
+    <div class="summary-card"><div class="s-label">파이프라인(100% 잔여 + 90/75/50F)</div><div class="s-value">${pipeStr}</div>${pipeSub ? `<div class="s-sub">${pipeSub}</div>` : ''}</div>
     <div class="summary-card"><div class="s-label">실적+파이프라인 합계</div><div class="s-value">${s.combinedEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">목표 대비 부족액</div><div class="s-value" style="color:var(--down)">${s.shortfallEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">${shortfallLabel}</div><div class="s-value" style="color:${shortfallColor}">${shortfallStr}</div></div>
     <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%</div></div>
   `;
+}
+
+function toggleUnmatchedDetail(e) {
+  e.preventDefault();
+  const list = document.getElementById('rev2-unmatched-list');
+  const link = document.getElementById('rev2-unmatched-toggle');
+  const open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : '';
+  link.textContent = open ? '[상세보기]' : '[접기]';
+}
+
+function renderUnmatchedNotice(pipelineData) {
+  const notice = document.getElementById('rev2-unmatched-notice');
+  if (!pipelineData || pipelineData.unmatchedCount === 0) { notice.style.display = 'none'; return; }
+  notice.style.display = '';
+  document.getElementById('rev2-unmatched-text').textContent =
+    `※ 매출 실적과 매칭되지 않은 100% 프로젝트 ${pipelineData.unmatchedCount}건은 수주금액 전액을 잔여분으로 계산했습니다`;
+  document.getElementById('rev2-unmatched-list').innerHTML = pipelineData.unmatched.map(u =>
+    `<div class="rev2-unmatched-row"><span class="code">${escHtml(u.code)}</span><span class="name">${escHtml(u.name)}</span><span class="amt">${u.amountEok.toFixed(1)}억</span></div>`
+  ).join('');
+  document.getElementById('rev2-unmatched-list').style.display = 'none';
+  document.getElementById('rev2-unmatched-toggle').textContent = '[상세보기]';
 }
 
 // ─── 매출 추이: 차트 렌더링 (Chart.js) ────────────────────────────────────────
@@ -2260,9 +2357,11 @@ const salesChartCommonScales = {
 };
 
 // [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
-function renderSalesChart1(scope, series, pipelineEok) {
+function renderSalesChart1(scope, series, pipelineData) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
   if (salesChart1) salesChart1.destroy();
+
+  const pipelineEok = pipelineData ? pipelineData.totalEok : null;
 
   const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
   const cumActualWon = buildCumulativeActual(series);
@@ -2326,17 +2425,18 @@ function renderSalesChart1(scope, series, pipelineEok) {
 
   document.getElementById('rev2-pipeline-notice').style.display = (pipelineEok == null) ? '' : 'none';
   document.getElementById('rev2-footnote1').textContent = pipelineStartMonth
-    ? `※ ${pipelineStartMonth}월 이후 초록 구간은 50%(F) 이상 파이프라인을 잔여 월에 균등 배분한 참고값이며, 실제 매출 청구 시점과 다를 수 있습니다.`
+    ? `※ ${pipelineStartMonth}월 이후 초록 구간은 파이프라인을 잔여 월에 균등 배분한 참고값이며, 실제 매출 청구 시점 및 연도와 다를 수 있습니다.`
     : '';
+
+  renderUnmatchedNotice(pipelineData);
 }
 
 // [보조 차트] 확도별 파이프라인 구성 (가로 누적 막대)
-function renderPipelineCompositionChart(scope) {
+function renderPipelineCompositionChart(scope, pipelineData) {
   const notice = document.getElementById('rev2-pipe-notice');
   const area   = document.getElementById('rev2-pipe-chart-area');
-  const bySection = getPipelineBySectionEok(scope);
 
-  if (!bySection) {
+  if (!pipelineData) {
     notice.style.display = '';
     area.style.display = 'none';
     return;
@@ -2344,9 +2444,7 @@ function renderPipelineCompositionChart(scope) {
   notice.style.display = 'none';
   area.style.display = '';
 
-  const nameMap  = { '100': '100%', '90': '90%', '75': '75%', '50f': '50%(F)' };
-  const colorMap = { '100': '#2a78d6', '90': '#1baf7a', '75': '#eda100', '50f': '#eb6834' };
-  const total = PIPELINE_SECTIONS.reduce((s, id) => s + bySection[id], 0);
+  const bySection = pipelineData.bySection;
 
   const ctx = document.getElementById('rev2-chart-pipe').getContext('2d');
   if (salesChartPipe) salesChartPipe.destroy();
@@ -2354,9 +2452,9 @@ function renderPipelineCompositionChart(scope) {
   salesChartPipe = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: [`파이프라인 ${total.toFixed(1)}억`],
+      labels: [`파이프라인 ${pipelineData.totalEok.toFixed(1)}억`],
       datasets: PIPELINE_SECTIONS.map(id => ({
-        label: nameMap[id], data: [bySection[id]], backgroundColor: colorMap[id], stack: 'pipe',
+        label: PIPELINE_LABELS[id], data: [bySection[id]], backgroundColor: PIPELINE_COLORS[id], stack: 'pipe',
       })),
     },
     options: {
@@ -2378,7 +2476,7 @@ function renderPipelineCompositionChart(scope) {
   });
 
   document.getElementById('rev2-pipe-legend').innerHTML = PIPELINE_SECTIONS.map(id =>
-    `<span class="rev2-pipe-legend-item"><span class="rev2-legend-dot" style="background:${colorMap[id]}"></span>${nameMap[id]} ${bySection[id].toFixed(1)}억</span>`
+    `<span class="rev2-pipe-legend-item"><span class="rev2-legend-dot" style="background:${PIPELINE_COLORS[id]}"></span>${PIPELINE_LABELS[id]} ${bySection[id].toFixed(1)}억</span>`
   ).join('');
 }
 
@@ -2413,10 +2511,10 @@ function renderSalesTrend() {
   content.style.display = '';
 
   const series = buildMonthlySeries(SALES_SCOPE);
-  const pipelineEok = getPipelineEok(SALES_SCOPE);
-  renderSalesSummary(SALES_SCOPE, series, pipelineEok);
-  renderSalesChart1(SALES_SCOPE, series, pipelineEok);
-  renderPipelineCompositionChart(SALES_SCOPE);
+  const pipelineData = computePipelineData(SALES_SCOPE);
+  renderSalesSummary(SALES_SCOPE, series, pipelineData);
+  renderSalesChart1(SALES_SCOPE, series, pipelineData);
+  renderPipelineCompositionChart(SALES_SCOPE, pipelineData);
 }
 
 function setSalesScope(scope) {
