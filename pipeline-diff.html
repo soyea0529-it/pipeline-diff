@@ -188,6 +188,13 @@
     font-size: 14px; font-weight: 600; margin-bottom: 14px; padding: 12px 16px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   }
+  .inv-cat-diff-line {
+    display: flex; flex-wrap: wrap; gap: 24px; font-size: 12px; font-weight: 500;
+    color: var(--text-sub); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  }
+  .inv-cat-diff-item  { white-space: nowrap; }
+  .inv-cat-diff-label { color: var(--text-sub); margin-right: 4px; }
+  .inv-cat-diff-same  { color: var(--text-sub); }
   .inv-move-block {
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 14px 16px; margin-bottom: 16px;
@@ -1134,6 +1141,39 @@ function invSectionCurrTotal(sectionId) {
 function invSectionCurrCatTotal(sectionId, cat) {
   return (INV_FILES.curr[sectionId]?.rows || []).reduce((s, r) => s + (r[cat + '합계'] || 0), 0);
 }
+function invSectionPrevCatTotal(sectionId, cat) {
+  return (INV_FILES.prev[sectionId]?.rows || []).reduce((s, r) => s + (r[cat + '합계'] || 0), 0);
+}
+
+// 구간의 제품/상품/용역/유지보수/총합계 전주-금주 변동을 항목별로 계산
+function buildCatDiffData(sectionId) {
+  return [...INV_CATS, '총합계'].map(cat => {
+    const isTotal = cat === '총합계';
+    const prevV = isTotal ? invSectionPrevTotal(sectionId) : invSectionPrevCatTotal(sectionId, cat);
+    const currV = isTotal ? invSectionCurrTotal(sectionId) : invSectionCurrCatTotal(sectionId, cat);
+    const diff = currV - prevV;
+    return { cat, diff, same: Math.abs(diff) < AMT_EPS };
+  });
+}
+
+// withUnit: 숫자 뒤에 "백만" 단위를 붙일지 여부 (보고문 초안은 생략)
+function catDiffItemText(d, withUnit) {
+  if (d.same) return `${d.cat} ─`;
+  const arrow = d.diff > 0 ? '▲' : '▼';
+  return `${d.cat} ${arrow}${fmtAmt(Math.abs(d.diff))}${withUnit ? '백만' : ''}`;
+}
+
+function buildInvCategoryDiffLineHtml(sectionId) {
+  const items = buildCatDiffData(sectionId).map(d => {
+    if (d.same) {
+      return `<span class="inv-cat-diff-item"><span class="inv-cat-diff-label">${d.cat}</span><span class="inv-cat-diff-same">─</span></span>`;
+    }
+    const cls = d.diff > 0 ? 'diff-up' : 'diff-down';
+    const arrow = d.diff > 0 ? '▲' : '▼';
+    return `<span class="inv-cat-diff-item"><span class="inv-cat-diff-label">${d.cat}</span><span class="${cls}">${arrow}${fmtAmt(Math.abs(d.diff))}백만</span></span>`;
+  });
+  return `<div class="inv-cat-diff-line">${items.join('')}</div>`;
+}
 
 // ─── 인벤토리 비교: 렌더링 ─────────────────────────────────────────────────────
 
@@ -1169,9 +1209,10 @@ function buildInvSectionHtml(sectionId) {
   const currTotal = invSectionCurrTotal(sectionId);
   const totalDiff = currTotal - prevTotal;
 
-  const summaryLine = Math.abs(totalDiff) < AMT_EPS
-    ? `<div class="inv-summary-line">${invCompareLabel()} <b>변동 없음</b> &nbsp;|&nbsp; 금주 합계 ${fmtAmt(currTotal)}백만</div>`
-    : `<div class="inv-summary-line">${invCompareLabel()} ${totalDiff > 0 ? '▲' : '▼'} <b class="${totalDiff > 0 ? 'diff-up' : 'diff-down'}">${fmtAmt(Math.abs(totalDiff))}백만</b> &nbsp;|&nbsp; ${invPrevLabel()} ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만</div>`;
+  const summaryText = Math.abs(totalDiff) < AMT_EPS
+    ? `${invCompareLabel()} <b>변동 없음</b> &nbsp;|&nbsp; 금주 합계 ${fmtAmt(currTotal)}백만`
+    : `${invCompareLabel()} ${totalDiff > 0 ? '▲' : '▼'} <b class="${totalDiff > 0 ? 'diff-up' : 'diff-down'}">${fmtAmt(Math.abs(totalDiff))}백만</b> &nbsp;|&nbsp; ${invPrevLabel()} ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만`;
+  const summaryLine = `<div class="inv-summary-line">${summaryText}${buildInvCategoryDiffLineHtml(sectionId)}</div>`;
 
   return summaryLine + buildMoveBlock(sectionId, sec) + buildInvTable(sectionId, sec);
 }
@@ -1316,9 +1357,14 @@ function buildSectionReportText(sectionId) {
   const outflowLines = sec.outflow.map(it =>
     ` - ${it.code} ${it.name} / ${fmtAmt(it.prevAmt)}백만 / 유출: ${label} → ${INV_SECTION_LABEL[it.currSection]}`);
 
-  if (notable.length === 0 && outflowLines.length === 0) return `[${label}] ${invCompareLabel()} 변동 없음`;
+  const catDiffLine = '      ' + buildCatDiffData(sectionId)
+    .filter(d => d.cat !== '총합계')
+    .map(d => catDiffItemText(d, false))
+    .join(' / ');
 
-  const header = `[${label}] ${invCompareLabel()} ${diff >= 0 ? '▲' : '▼'}${fmtAmt(Math.abs(diff))}백만`;
+  if (notable.length === 0 && outflowLines.length === 0) return `[${label}] ${invCompareLabel()} 변동 없음\n${catDiffLine}`;
+
+  const header = `[${label}] ${invCompareLabel()} ${diff >= 0 ? '▲' : '▼'}${fmtAmt(Math.abs(diff))}백만\n${catDiffLine}`;
   const lines = notable.map(it => {
     let detail;
     if (it.type === 'new')       detail = '신규';
@@ -1387,6 +1433,22 @@ async function downloadInvExcel() {
     ws.getCell(`A${rIdx}`).value = summaryText;
     ws.mergeCells(`A${rIdx}:M${rIdx}`);
     ws.getCell(`A${rIdx}`).font = { bold: true };
+    rIdx += 1;
+
+    const catDiffRichText = [];
+    buildCatDiffData(s.id).forEach((d, i) => {
+      if (i > 0) catDiffRichText.push({ text: '   ' });
+      catDiffRichText.push({ font: { color: { argb: 'FF8890B5' } }, text: `${d.cat} ` });
+      if (d.same) {
+        catDiffRichText.push({ font: { color: { argb: 'FF8890B5' } }, text: '─' });
+      } else {
+        const color = d.diff > 0 ? 'FF22C55E' : 'FFEF4444';
+        const arrow = d.diff > 0 ? '▲' : '▼';
+        catDiffRichText.push({ font: { color: { argb: color }, bold: true }, text: `${arrow}${fmtAmt(Math.abs(d.diff))}백만` });
+      }
+    });
+    ws.getCell(`A${rIdx}`).value = { richText: catDiffRichText };
+    ws.mergeCells(`A${rIdx}:M${rIdx}`);
     rIdx += 2;
 
     const moveLines = [];
