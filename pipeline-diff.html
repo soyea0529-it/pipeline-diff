@@ -1156,13 +1156,6 @@ function buildCatDiffData(sectionId) {
   });
 }
 
-// withUnit: 숫자 뒤에 "백만" 단위를 붙일지 여부 (보고문 초안은 생략)
-function catDiffItemText(d, withUnit) {
-  if (d.same) return `${d.cat} ─`;
-  const arrow = d.diff > 0 ? '▲' : '▼';
-  return `${d.cat} ${arrow}${fmtAmt(Math.abs(d.diff))}${withUnit ? '백만' : ''}`;
-}
-
 function buildInvCategoryDiffLineHtml(sectionId) {
   const items = buildCatDiffData(sectionId).map(d => {
     if (d.same) {
@@ -1344,44 +1337,126 @@ function buildInvTable(sectionId, sec) {
 }
 
 // ─── 인벤토리 비교: 보고문 초안 ─────────────────────────────────────────────────
+// 형식: "-------- 사업기회 현황" 아래에 구간별로 1./2./3... 번호를 매기고,
+// 각 구간 안에서 유입/신규등록/금액변동/유출/완전삭제 분류를 N.1./N.2.… 로 세분화한다.
 
-function buildSectionReportText(sectionId) {
+// 소수점 첫째 자리가 0이면 소수점 생략, 아니면 1자리 표기 (부호 없는 절대값 문자열)
+function fmtAmtReport(v) {
+  const n = Math.round(Math.abs(v) * 10) / 10;
+  const hasDecimal = Math.abs(n - Math.round(n)) > 0.001;
+  return n.toLocaleString('ko-KR', { minimumFractionDigits: hasDecimal ? 1 : 0, maximumFractionDigits: 1 });
+}
+
+// 증가: ▲금액 (부호 없음) / 감소: ▼-금액 (마이너스 포함)
+function formatReportAmt(amt) {
+  return amt >= 0 ? `▲${fmtAmtReport(amt)}백만` : `▼-${fmtAmtReport(Math.abs(amt))}백만`;
+}
+
+function reportCompareDateLabel() {
+  const info = getWeekDateInfo('prev');
+  return info.date ? info.date.raw : invPrevLabel();
+}
+
+function sortByAbsAmt(items) {
+  return [...items].sort((a, b) => Math.abs(b.amt) - Math.abs(a.amt));
+}
+
+// 구간 하나의 분류(유입/신규등록/금액변동/유출/완전삭제)를 순서대로 구성
+function buildSectionGroups(sectionId, sec) {
+  const groups = [];
+
+  if (sec.inflow.length) {
+    groups.push({
+      subtitle: `${INV_SECTION_LABEL[sectionId]}로 이동(추가) ${sec.inflow.length}건`,
+      items: sortByAbsAmt(sec.inflow.map(it => ({
+        code: it.code,
+        text: `${it.name}(${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[sectionId]})`,
+        amt: it.currAmt,
+      }))),
+    });
+  }
+
+  if (sec.brandNew.length) {
+    groups.push({
+      subtitle: `신규등록 ${sec.brandNew.length}건`,
+      items: sortByAbsAmt(sec.brandNew.map(it => ({ code: it.code, text: it.name, amt: it.currAmt }))),
+    });
+  }
+
+  const changed = sec.rows.filter(r => r.type === 'changed');
+  if (changed.length) {
+    const up = changed.filter(it => it.diff >= 0);
+    const down = changed.filter(it => it.diff < 0);
+    const toItem = it => ({ code: it.code, text: it.name, amt: it.diff });
+    if (up.length && down.length) {
+      groups.push({ subtitle: `금액변동(상승) ${up.length}건`, items: sortByAbsAmt(up.map(toItem)) });
+      groups.push({ subtitle: `금액변동(감소) ${down.length}건`, items: sortByAbsAmt(down.map(toItem)) });
+    } else {
+      groups.push({ subtitle: `금액변동 ${changed.length}건`, items: sortByAbsAmt(changed.map(toItem)) });
+    }
+  }
+
+  // 유출: 이동한 목적지 구간별로 소제목을 분리 (구간 순서 기준으로 정렬)
+  const outflowByDest = {};
+  sec.outflow.forEach(it => { (outflowByDest[it.currSection] = outflowByDest[it.currSection] || []).push(it); });
+  INV_SECTIONS.forEach(destSec => {
+    const list = outflowByDest[destSec.id];
+    if (!list || !list.length) return;
+    groups.push({
+      subtitle: `${destSec.label}로 이동 ${list.length}건`,
+      items: sortByAbsAmt(list.map(it => ({
+        code: it.code,
+        text: `${it.name}(${INV_SECTION_LABEL[sectionId]} → ${destSec.label})`,
+        amt: -it.prevAmt,
+      }))),
+    });
+  });
+
+  if (sec.fullyDeleted.length) {
+    groups.push({
+      subtitle: `완전삭제 ${sec.fullyDeleted.length}건`,
+      items: sortByAbsAmt(sec.fullyDeleted.map(it => ({ code: it.code, text: it.name, amt: -it.prevAmt }))),
+    });
+  }
+
+  return groups;
+}
+
+function buildSectionReportText(sectionNum, sectionId, compareDate) {
   const label = INV_SECTION_LABEL[sectionId];
   const sec   = INV_RESULT.bySection[sectionId];
   const prevTotal = invSectionPrevTotal(sectionId);
   const currTotal = invSectionCurrTotal(sectionId);
   const diff = currTotal - prevTotal;
 
-  const notable = sec.rows.filter(it => it.type !== 'same');
-  // 이 구간에서 다른 구간으로 빠져나간 항목(유출)도 순변동 사유로 함께 표기
-  const outflowLines = sec.outflow.map(it =>
-    ` - ${it.code} ${it.name} / ${fmtAmt(it.prevAmt)}백만 / 유출: ${label} → ${INV_SECTION_LABEL[it.currSection]}`);
+  if (Math.abs(diff) < AMT_EPS) {
+    return `${sectionNum}. ${label} : ${compareDate} 대비 변동 없음`;
+  }
 
-  const catDiffLine = '      ' + buildCatDiffData(sectionId)
-    .filter(d => d.cat !== '총합계')
-    .map(d => catDiffItemText(d, false))
-    .join(' / ');
+  const dir = diff >= 0 ? '상승' : '감소';
+  const header = `${sectionNum}. ${label} : ${compareDate} 대비 ${formatReportAmt(diff)} ${dir}`;
 
-  if (notable.length === 0 && outflowLines.length === 0) return `[${label}] ${invCompareLabel()} 변동 없음\n${catDiffLine}`;
-
-  const header = `[${label}] ${invCompareLabel()} ${diff >= 0 ? '▲' : '▼'}${fmtAmt(Math.abs(diff))}백만\n${catDiffLine}`;
-  const lines = notable.map(it => {
-    let detail;
-    if (it.type === 'new')       detail = '신규';
-    else if (it.type === 'move') {
-      detail = `${INV_SECTION_LABEL[it.prevSection]} → ${INV_SECTION_LABEL[it.currSection]}`;
-      if (Math.abs(it.diff) >= AMT_EPS) detail += ` (${it.diff >= 0 ? '▲' : '▼'}${fmtAmt(it.diff)}백만)`;
-    }
-    else if (it.type === 'del')  detail = `삭제 (${invPrevLabel()} ${fmtAmt(it.prevAmt)}백만)`;
-    else                         detail = `${it.diff >= 0 ? '▲' : '▼'}${fmtAmt(it.diff)}백만`;
-    const amt = it.type === 'del' ? it.prevAmt : it.currAmt;
-    return ` - ${it.code} ${it.name} / ${fmtAmt(amt)}백만 / ${detail}`;
+  const groups = buildSectionGroups(sectionId, sec);
+  const single = groups.length === 1;
+  const groupTexts = groups.map((g, i) => {
+    const itemIndent = single ? '  ' : '    ';
+    const itemLines = g.items.map(it => `${itemIndent}- ${it.code} ${it.text} / ${formatReportAmt(it.amt)}`);
+    if (single) return itemLines.join('\n');
+    return `  ${sectionNum}.${i + 1}. ${g.subtitle}\n` + itemLines.join('\n');
   });
-  return header + '\n' + lines.concat(outflowLines).join('\n');
+
+  return header + '\n\n' + groupTexts.join('\n\n');
+}
+
+function buildFullReportDraftText() {
+  const compareDate = reportCompareDateLabel();
+  const included = INV_SECTIONS.filter(s => INV_FILES.prev[s.id] || INV_FILES.curr[s.id]);
+  const sectionTexts = included.map((s, i) => buildSectionReportText(i + 1, s.id, compareDate));
+  return '-------- 사업기회 현황\n\n' + sectionTexts.join('\n\n');
 }
 
 function buildReportDraftArea() {
-  const text = INV_SECTIONS.map(s => buildSectionReportText(s.id)).join('\n\n');
+  const text = buildFullReportDraftText();
   return `
   <div class="report-draft-box">
     <div class="report-draft-header">
