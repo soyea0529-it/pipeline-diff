@@ -593,12 +593,46 @@
 
       <div id="rev2-warning"></div>
 
+      <div class="empty-state" id="rev2-empty">
+        <div class="e-icon">📈</div>
+        <p>주간 영업회의자료를 업로드하면 목표 대비 매출 추이를 확인할 수 있습니다.</p>
+      </div>
+
+      <div id="rev2-content" style="display:none">
+        <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
+
+        <div class="chart-card">
+          <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
+          <div class="rev2-legend" id="rev2-main-legend"></div>
+          <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
+          <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
+          <div class="rev2-footnote">※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.</div>
+          <div class="rev2-footnote" id="rev2-excluded-footnote">※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.</div>
+          <div class="rev2-footnote">※ 100% 구간은 인벤토리 수주금액에서 매출 실적으로 이미 청구된 금액을 차감한 미청구 잔여분 기준으로 후보 목록에 반영됩니다.</div>
+          <div class="rev2-unmatched-notice" id="rev2-unmatched-notice" style="display:none">
+            <span id="rev2-unmatched-text"></span>
+            <a href="#" class="rev2-detail-link" id="rev2-unmatched-toggle" onclick="toggleUnmatchedDetail(event)">[상세보기]</a>
+            <div class="rev2-unmatched-list" id="rev2-unmatched-list" style="display:none"></div>
+          </div>
+          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
+        </div>
+
+        <div class="chart-card" id="rev2-pipe-card">
+          <div class="chart-card-title">확도별 파이프라인 구성</div>
+          <div class="rev2-pipeline-notice" id="rev2-pipe-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
+          <div id="rev2-pipe-chart-area">
+            <div class="chart-wrap-sm"><canvas id="rev2-chart-pipe"></canvas></div>
+            <div class="rev2-pipe-legend" id="rev2-pipe-legend"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="chart-card" id="rev2-forecast-card">
         <div class="rev2-forecast-header" onclick="toggleForecastSection()">
-          <span class="chart-card-title" style="margin-bottom:0">매출 예상 입력 <span class="rev2-unit-hint">(단위: 백만원)</span></span>
-          <span class="rev2-forecast-toggle-icon" id="rev2-forecast-toggle-icon">▾</span>
+          <span class="chart-card-title" style="margin-bottom:0">매출 예상 입력 (자동 반영 · 수정 가능) <span class="rev2-unit-hint">(단위: 백만원)</span></span>
+          <span class="rev2-forecast-toggle-icon" id="rev2-forecast-toggle-icon">▸</span>
         </div>
-        <div id="rev2-forecast-body">
+        <div id="rev2-forecast-body" style="display:none">
           <div class="rev2-forecast-noinv" id="rev2-forecast-noinv" style="display:none">인벤토리 비교 탭에서 먼저 분석해주세요</div>
           <div id="rev2-forecast-content">
             <div class="rev2-forecast-summarybar" id="rev2-forecast-summarybar"></div>
@@ -639,40 +673,6 @@
                 <tbody id="rev2-forecast-tbody"></tbody>
               </table>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="empty-state" id="rev2-empty">
-        <div class="e-icon">📈</div>
-        <p>주간 영업회의자료를 업로드하면 목표 대비 매출 추이를 확인할 수 있습니다.</p>
-      </div>
-
-      <div id="rev2-content" style="display:none">
-        <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
-
-        <div class="chart-card">
-          <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
-          <div class="rev2-legend" id="rev2-main-legend"></div>
-          <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
-          <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
-          <div class="rev2-footnote">※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.</div>
-          <div class="rev2-footnote" id="rev2-excluded-footnote">※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.</div>
-          <div class="rev2-footnote">※ 100% 구간은 인벤토리 수주금액에서 매출 실적으로 이미 청구된 금액을 차감한 미청구 잔여분 기준으로 후보 목록에 반영됩니다.</div>
-          <div class="rev2-unmatched-notice" id="rev2-unmatched-notice" style="display:none">
-            <span id="rev2-unmatched-text"></span>
-            <a href="#" class="rev2-detail-link" id="rev2-unmatched-toggle" onclick="toggleUnmatchedDetail(event)">[상세보기]</a>
-            <div class="rev2-unmatched-list" id="rev2-unmatched-list" style="display:none"></div>
-          </div>
-          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
-        </div>
-
-        <div class="chart-card" id="rev2-pipe-card">
-          <div class="chart-card-title">확도별 파이프라인 구성</div>
-          <div class="rev2-pipeline-notice" id="rev2-pipe-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
-          <div id="rev2-pipe-chart-area">
-            <div class="chart-wrap-sm"><canvas id="rev2-chart-pipe"></canvas></div>
-            <div class="rev2-pipe-legend" id="rev2-pipe-legend"></div>
           </div>
         </div>
       </div>
@@ -1206,16 +1206,24 @@ function parseInventorySheet(wb) {
 
 // 시트2 "매출 목록" — row[2] 헤더, 데이터는 row[4]부터. 한 프로젝트가 여러 행(분할 청구)일 수 있어 행 단위로 반환.
 function parseSalesListSheet(wb) {
+  console.log('[매출 목록 파싱] 파일 시트 목록:', wb.SheetNames);
   const targetName = wb.SheetNames.find(n => n.includes('매출')) || wb.SheetNames[1];
-  if (!targetName) { console.log('[매출 목록 파싱] 시트를 찾지 못했습니다.'); return []; }
+  console.log('[매출 목록 파싱] "매출" 시트 찾음:', !!targetName, targetName || '(없음 — 매출 목록 미반영)');
+  if (!targetName) return [];
   const raw = XLSX.utils.sheet_to_json(wb.Sheets[targetName], { header: 1, defval: '' });
   if (!raw || raw.length < 5) { console.log('[매출 목록 파싱]', targetName, '데이터가 없습니다.'); return []; }
 
   const row2 = raw[2] || [];
+  const row3 = raw[3] || [];
+  console.log('[매출 목록 파싱] row[2]:', row2.map((v, i) => `${i}=${v}`).join(', '));
+  console.log('[매출 목록 파싱] row[3]:', row3.map((v, i) => `${i}=${v}`).join(', '));
+
   let colCode    = findHeaderCol([row2], '프로젝트코드');
   const colSeq   = findHeaderCol([row2], '매출순번');
   const colDate  = findHeaderCol([row2], '매출청구일');
-  const colTotal = findHeaderCol([row2], '합계');
+  // 합계는 row[2]가 아니라 row[3]에 있음 (row[2] 인덱스 8은 "매출금액(백만원)" 병합 헤더라 실제 항목명이 없음)
+  let colTotal = findHeaderCol([row3], '합계');
+  if (colTotal < 0) colTotal = 12; // 폴백: 스펙상 고정 위치
 
   if (colCode < 0) colCode = scanOpCodeColumn(raw, 4);
 
@@ -1225,12 +1233,22 @@ function parseSalesListSheet(wb) {
   const dataRows = raw.slice(4).filter(r => r[colCode] && /^OP-/i.test(String(r[colCode]).trim()));
   console.log('[매출 목록 파싱] 읽은 행 수:', dataRows.length);
 
-  return dataRows.map(r => ({
-    code: String(r[colCode]).trim(),
-    seq:  colSeq  >= 0 ? String(r[colSeq] ?? '').trim() : '',
-    billDate: colDate >= 0 ? r[colDate] : '',
-    amountMillion: colTotal >= 0 ? (Number(r[colTotal]) || 0) : 0,
-  }));
+  const result = dataRows.map(r => {
+    const rawTotal = colTotal >= 0 ? r[colTotal] : '';
+    const numTotal = (rawTotal === '' || rawTotal == null) ? NaN : Number(rawTotal);
+    return {
+      code: String(r[colCode]).trim(),
+      seq:  colSeq  >= 0 ? String(r[colSeq] ?? '').trim() : '',
+      billDate: colDate >= 0 ? r[colDate] : '',
+      amountMillion: isNaN(numTotal) ? '' : numTotal, // 숫자가 아니면 빈칸, 0이면 0 그대로 유지
+    };
+  });
+
+  console.log('[매출 목록 파싱] 첫 3건:', result.slice(0, 3).map(e => ({ 코드: e.code, 청구일: e.billDate, 금액: e.amountMillion })));
+  const totalAmt = result.reduce((s, e) => s + (typeof e.amountMillion === 'number' ? e.amountMillion : 0), 0);
+  console.log('[매출 목록 파싱] 총 건수/금액합계(백만):', result.length, Math.round(totalAmt * 100) / 100);
+
+  return result;
 }
 
 function processFile(file, type, week) {
@@ -2997,7 +3015,8 @@ function mergeAutoForecastFromInventory() {
       const d = parseExcelDateFull(row.billDate);
       const month = d ? `${d.year}-${String(d.month).padStart(2, '0')}` : '';
       if (!byCode[row.code]) byCode[row.code] = [];
-      byCode[row.code].push({ seq: row.seq, month, amountMillion: Math.round(row.amountMillion * 100) / 100 });
+      const amountMillion = typeof row.amountMillion === 'number' ? Math.round(row.amountMillion * 100) / 100 : ''; // 숫자가 아니면 빈칸 유지
+      byCode[row.code].push({ seq: row.seq, month, amountMillion });
       totalRows++;
     });
   });
@@ -3216,7 +3235,7 @@ function renderSalesChart1(scope, series, forecastData) {
 
   const excludedEl = document.getElementById('rev2-excluded-footnote');
   if (forecastData && forecastData.excludedCount > 0) {
-    excludedEl.textContent = `※ 매출청구일이 2027년 이후인 ${forecastData.excludedCount}건(${millionToEok(forecastData.excludedMillion).toFixed(1)}억)은 올해 전망에서 제외됩니다.`;
+    excludedEl.textContent = `※ 매출청구일이 2027년 이후인 ${forecastData.excludedCount}건(${millionToEok(forecastData.excludedMillion).toFixed(1)}억)은 올해 전망에서 제외되었습니다.`;
   } else {
     excludedEl.textContent = '※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.';
   }
