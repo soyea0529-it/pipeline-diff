@@ -146,8 +146,14 @@
   .inv-search-scope-btn:hover:not(.active) { color: var(--text); }
   .inv-search-remark-toggle { margin-left: auto; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text-sub); font-size: 12px; cursor: pointer; transition: all .2s; }
   .inv-search-remark-toggle.active { background: #3a2f08; border-color: #f5c518; color: #f5c518; }
+  .inv-search-results-wrap { margin-bottom: 8px; }
+  .inv-search-header { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .inv-search-header .inv-search-count { margin-bottom: 0; }
+  .inv-search-toggle-icon { color: var(--text-sub); font-size: 14px; }
+  .inv-search-divider { border-top: 1px solid var(--border); margin: 20px 0 8px; }
+  .inv-search-divider-label { text-align: center; font-size: 11px; color: var(--text-sub); margin-bottom: 20px; }
   .inv-search-count { font-size: 13px; color: var(--text-sub); margin-bottom: 12px; }
-  .inv-search-cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+  .inv-search-cards { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
   .inv-search-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
   .inv-search-card-badges { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .badge-search-new { background: #0f2d1a; color: #34d17e; }
@@ -1608,18 +1614,27 @@ function invHighlightMultiline(text, query) {
   return invHighlight(text, query).split('\n').join('<br>');
 }
 
+// 검색 결과 카드 영역 접기/펼치기 — 검색 자체는 아래 전체 현황(요약/구간이동/표)에 영향을 주지 않는 별도 조회 기능.
+let INV_SEARCH_COLLAPSED = false;
+
+function toggleInvSearchCollapse() {
+  INV_SEARCH_COLLAPSED = !INV_SEARCH_COLLAPSED;
+  const body = document.getElementById('inv-search-body');
+  const icon = document.getElementById('inv-search-toggle-icon');
+  if (body) body.style.display = INV_SEARCH_COLLAPSED ? 'none' : '';
+  if (icon) icon.textContent = INV_SEARCH_COLLAPSED ? '▸' : '▾';
+}
+
 function renderInvSearchResults() {
-  const panels = document.getElementById('inv-section-panels');
   const resultsEl = document.getElementById('inv-search-results');
-  if (!panels || !resultsEl) return;
+  if (!resultsEl) return;
   const query = INV_SEARCH_QUERY.trim();
 
   if (!query) {
-    panels.style.display = '';
     resultsEl.innerHTML = '';
+    INV_SEARCH_COLLAPSED = false; // 다음 검색은 항상 펼침 상태로 새로 시작
     return;
   }
-  panels.style.display = 'none';
 
   const q = query.toLowerCase();
   const sectionIds = INV_SEARCH_SCOPE === 'current' ? [INV_ACTIVE_SECTION_ID] : INV_SECTIONS.map(s => s.id);
@@ -1643,10 +1658,22 @@ function renderInvSearchResults() {
   const order = { new: 0, move: 1, changed: 2, same: 3, del: 4 };
   items.sort((a, b) => order[a.type] - order[b.type]);
 
-  resultsEl.innerHTML = `<div class="inv-search-count">검색 결과 ${items.length}건</div>` +
-    (items.length
-      ? `<div class="inv-search-cards">${items.map(it => buildInvSearchCard(it, query)).join('')}</div>`
-      : `<div class="empty-state"><div class="e-icon">🔍</div><p>검색 결과가 없습니다.</p></div>`);
+  const bodyHtml = items.length
+    ? `<div class="inv-search-cards">${items.map(it => buildInvSearchCard(it, query)).join('')}</div>`
+    : `<div class="empty-state"><div class="e-icon">🔍</div><p>검색 결과가 없습니다.</p></div>`;
+
+  // 검색 결과는 별도 조회 영역일 뿐, 아래 구간 패널(#inv-section-panels)의 요약/구간이동내역/표/보고문 초안은
+  // 검색 여부와 무관하게 항상 그대로 표시된다(구분선 아래 "전체 현황"으로 시각적으로만 구분).
+  resultsEl.innerHTML = `
+    <div class="inv-search-results-wrap">
+      <div class="inv-search-header" onclick="toggleInvSearchCollapse()">
+        <span class="inv-search-count">검색 결과 ${items.length}건</span>
+        <span class="inv-search-toggle-icon" id="inv-search-toggle-icon">${INV_SEARCH_COLLAPSED ? '▸' : '▾'}</span>
+      </div>
+      <div id="inv-search-body" style="${INV_SEARCH_COLLAPSED ? 'display:none' : ''}">${bodyHtml}</div>
+      <div class="inv-search-divider"></div>
+      <div class="inv-search-divider-label">─ 전체 현황 ─</div>
+    </div>`;
 }
 
 function buildInvSearchCard(it, query) {
