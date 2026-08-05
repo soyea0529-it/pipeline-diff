@@ -31,6 +31,8 @@
   /* Header */
   header { padding: 32px 40px 0; border-bottom: 1px solid var(--border); }
   .header-top { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+  .header-clear-btn { margin-left: auto; background: none; border: none; color: var(--text-sub); font-size: 11px; cursor: pointer; text-decoration: underline; opacity: .55; transition: opacity .2s; padding: 4px 2px; flex-shrink: 0; }
+  .header-clear-btn:hover { opacity: 1; color: var(--text); }
   .logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0; }
   h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
   .subtitle { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
@@ -471,6 +473,7 @@
       <h1>파이프라인 주간 변동이력</h1>
       <div class="subtitle">전주 대비 금주 금액 변동 · 신규 등록 · 삭제 항목 분석</div>
     </div>
+    <button class="header-clear-btn" onclick="clearAllStoredData()">저장 데이터 전체 삭제</button>
   </div>
   <div class="tab-row">
     <div class="tab active" data-tab="inventory" onclick="switchTab('inventory')">인벤토리 비교</div>
@@ -580,6 +583,10 @@
         <div class="upload-label">주간 영업회의자료 업로드</div>
         <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
         <div class="upload-filename" id="rev2-upload-name"></div>
+      </div>
+      <div class="btn-row" style="margin-bottom:16px">
+        <button class="btn btn-secondary" onclick="resetSalesTrend()">초기화</button>
+        <span class="status-msg" id="rev2-status"></span>
       </div>
 
       <div id="rev2-warning"></div>
@@ -718,7 +725,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupCard('sal', 'curr');
   setupSalesUpload();
   await loadRevenueForecast();
-  if (document.getElementById('tab-revenue-trend').classList.contains('active')) renderSalesTrend();
+  await restoreSalesCompareData();
+  await restoreSalesTrendData();
+  await restoreLastActiveTab();
 });
 
 function buildInvUploadSlots() {
@@ -1055,6 +1064,11 @@ function resetInvAll() {
       <div class="e-icon">📊</div>
       <p>전주 · 금주 인벤토리 파일을 업로드하고 분석을 실행하세요. (구간별 선택 업로드 가능)</p>
     </div>`;
+  document.getElementById('report-content').innerHTML = `
+    <div class="empty-state">
+      <div class="e-icon">📋</div>
+      <p>인벤토리 비교 탭에서 변동이력 분석을 실행한 후 보고서를 생성하세요.</p>
+    </div>`;
 }
 
 // ─── Upload card: click + drag & drop ────────────────────────────────────────
@@ -1213,6 +1227,64 @@ function resetAll(type) {
   delete window[`_changes_${type}`];
   delete window[`_cfg_${type}`];
   delete window[`_fmt_${type}`];
+  if (type === 'sal') clearSalesCompareStorage();
+}
+
+// ─── 저장/복원 공용 유틸 (IndexedDB, idb-keyval) ───────────────────────────────
+// 숫자는 저장 시 소수점 2자리로 반올림한다.
+
+function roundNumbersDeep(obj) {
+  if (obj == null) return obj;
+  return JSON.parse(JSON.stringify(obj), (k, v) => typeof v === 'number' ? Math.round(v * 100) / 100 : v);
+}
+
+// ─── 매출 비교: 분석 결과 저장/복원 (IndexedDB) ────────────────────────────────
+// 원본 파일이 아니라 업로드 시 파싱된 행 데이터(= 화면/재분석에 실제 쓰이는 데이터)만 저장.
+
+const SALES_COMPARE_STORAGE_KEY = 'sales_compare';
+
+async function saveSalesCompareData(changes) {
+  if (!window.idbKeyval) return;
+  try {
+    const byType = { new: 0, del: 0, up: 0, down: 0, same: 0 };
+    let totalDiff = 0;
+    (changes || []).forEach(c => { byType[c.changeType]++; totalDiff += c.diff; });
+    await idbKeyval.set(SALES_COMPARE_STORAGE_KEY, roundNumbersDeep({
+      prev: { rows: DATA.sal.prev || [], fileName: document.getElementById('sal-prev-name').textContent },
+      curr: { rows: DATA.sal.curr || [], fileName: document.getElementById('sal-curr-name').textContent },
+      analyzedAt: Date.now(),
+      summary: {
+        newCount: byType.new, delCount: byType.del, upCount: byType.up, downCount: byType.down, sameCount: byType.same,
+        totalDiff,
+      },
+    }));
+  } catch (e) { /* IndexedDB 사용 불가 등 — 저장만 건너뛰고 분석 기능은 계속 동작 */ }
+}
+
+async function restoreSalesCompareData() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get(SALES_COMPARE_STORAGE_KEY);
+    if (!saved || !saved.prev || !saved.curr) return;
+    DATA.sal = { prev: saved.prev.rows || [], curr: saved.curr.rows || [] };
+    document.getElementById('sal-prev-name').textContent = saved.prev.fileName || '';
+    document.getElementById('sal-curr-name').textContent = saved.curr.fileName || '';
+    document.getElementById('sal-prev-rows').textContent = DATA.sal.prev.length ? `${DATA.sal.prev.length}행 로드됨` : '';
+    document.getElementById('sal-curr-rows').textContent = DATA.sal.curr.length ? `${DATA.sal.curr.length}행 로드됨` : '';
+    if (saved.prev.fileName) document.getElementById('sal-prev-card').classList.add('has-file');
+    if (saved.curr.fileName) document.getElementById('sal-curr-card').classList.add('has-file');
+    checkReady('sal');
+    if (DATA.sal.prev.length && DATA.sal.curr.length) {
+      runCompare('sal');
+      const ts = saved.analyzedAt ? new Date(saved.analyzedAt).toLocaleString('ko-KR') : '';
+      document.getElementById('sal-status').textContent = `✓ 이전 업로드/분석 결과를 불러왔습니다.${ts ? ' (분석: ' + ts + ')' : ''}`;
+    }
+  } catch (e) { /* 저장 데이터 형식이 깨졌으면 빈 상태로 시작 */ }
+}
+
+async function clearSalesCompareStorage() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.del(SALES_COMPARE_STORAGE_KEY); } catch (e) { /* 무시 */ }
 }
 
 // ─── Tab switch ───────────────────────────────────────────────────────────────
@@ -1224,6 +1296,43 @@ function switchTab(t) {
   document.getElementById('tab-' + t).classList.add('active');
   if (t === 'report') generateReport();
   if (t === 'revenue-trend') renderSalesTrend();
+  saveLastActiveTab(t);
+}
+
+// ─── 마지막 탭 기억 (IndexedDB) ─────────────────────────────────────────────────
+
+const LAST_TAB_STORAGE_KEY = 'last_active_tab';
+const VALID_TAB_IDS = ['inventory', 'sales', 'report', 'revenue-trend'];
+
+async function saveLastActiveTab(t) {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set(LAST_TAB_STORAGE_KEY, t); } catch (e) { /* 무시 */ }
+}
+
+async function restoreLastActiveTab() {
+  let saved = null;
+  if (window.idbKeyval) {
+    try { saved = await idbKeyval.get(LAST_TAB_STORAGE_KEY); } catch (e) { saved = null; }
+  }
+  switchTab(VALID_TAB_IDS.includes(saved) ? saved : 'inventory');
+}
+
+// ─── 저장 데이터 전체 삭제 ──────────────────────────────────────────────────────
+
+async function clearAllStoredData() {
+  if (!confirm('저장된 모든 분석 결과와 매출 예상 입력값을 삭제합니다. 계속하시겠습니까?')) return;
+  resetInvAll();
+  resetAll('sal');
+  resetSalesTrend();
+  REVENUE_FORECAST = {};
+  if (typeof renderForecastSection === 'function') renderForecastSection();
+  try {
+    if (window.idbKeyval) {
+      await idbKeyval.del('revenue_forecast');
+      await idbKeyval.del(LAST_TAB_STORAGE_KEY);
+    }
+  } catch (e) { /* 무시 */ }
+  alert('저장된 데이터를 모두 삭제했습니다.');
 }
 
 // ─── 인벤토리 비교: 유틸 ───────────────────────────────────────────────────────
@@ -2053,6 +2162,10 @@ function runCompare(type) {
   });
 
   renderResult(type, changes, cfg);
+  if (type === 'sal') {
+    document.getElementById('sal-status').textContent = '✓ 분석 완료 — ' + new Date().toLocaleString('ko-KR');
+    saveSalesCompareData(changes);
+  }
 }
 
 // ─── Render (table view per type) ────────────────────────────────────────────
@@ -3297,6 +3410,7 @@ function setSalesScope(scope) {
   document.getElementById('rev2-scope-hq').classList.toggle('active', scope === '본부');
   document.getElementById('rev2-scope-team1').classList.toggle('active', scope === '팀1');
   renderSalesTrend();
+  saveSalesTrendData();
 }
 
 function processSalesFile(file) {
@@ -3311,8 +3425,70 @@ function processSalesFile(file) {
     document.getElementById('rev2-upload-name').textContent = file.name;
     document.getElementById('rev2-upload-card').classList.add('has-file');
     renderSalesTrend();
+    document.getElementById('rev2-status').textContent = '✓ 분석 완료 — ' + new Date().toLocaleString('ko-KR');
+    saveSalesTrendData();
   };
   reader.readAsBinaryString(file);
+}
+
+// ─── 매출 추이: 분석 결과 저장/복원 (IndexedDB) ────────────────────────────────
+// 원본 파일이 아니라 파싱된 실적/상세행 데이터(= 차트에 실제 쓰이는 데이터)만 저장.
+
+const SALES_TREND_STORAGE_KEY = 'sales_trend';
+
+async function saveSalesTrendData() {
+  if (!window.idbKeyval || !SALES_PARSED) return;
+  try {
+    const series = buildMonthlySeries(SALES_SCOPE);
+    const s = computeSalesSummary(SALES_SCOPE, series, computeForecastSummary(SALES_SCOPE));
+    await idbKeyval.set(SALES_TREND_STORAGE_KEY, roundNumbersDeep({
+      fileName: document.getElementById('rev2-upload-name').textContent,
+      analyzedAt: Date.now(),
+      scope: SALES_SCOPE,
+      parsed: SALES_PARSED,
+      monthlySeries: series,
+      summary: {
+        annualTargetEok: s.annualTargetEok, cumActualEok: s.cumActualEok, pipelineEok: s.pipelineEok,
+        combinedEok: s.combinedEok, shortfallEok: s.shortfallEok, cumRate: s.cumRate,
+      },
+    }));
+  } catch (e) { /* IndexedDB 사용 불가 등 — 저장만 건너뛰고 분석 기능은 계속 동작 */ }
+}
+
+async function restoreSalesTrendData() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get(SALES_TREND_STORAGE_KEY);
+    if (!saved || !saved.parsed) return;
+    SALES_PARSED = saved.parsed;
+    SALES_SCOPE  = saved.scope === '팀1' ? '팀1' : '본부';
+    document.getElementById('rev2-scope-hq').classList.toggle('active', SALES_SCOPE === '본부');
+    document.getElementById('rev2-scope-team1').classList.toggle('active', SALES_SCOPE === '팀1');
+    if (saved.fileName) {
+      document.getElementById('rev2-upload-name').textContent = saved.fileName;
+      document.getElementById('rev2-upload-card').classList.add('has-file');
+    }
+    renderSalesTrend();
+    const ts = saved.analyzedAt ? new Date(saved.analyzedAt).toLocaleString('ko-KR') : '';
+    document.getElementById('rev2-status').textContent = `✓ 이전 업로드/분석 결과를 불러왔습니다.${ts ? ' (분석: ' + ts + ')' : ''}`;
+  } catch (e) { /* 저장 데이터 형식이 깨졌으면 빈 상태로 시작 */ }
+}
+
+async function clearSalesTrendStorage() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.del(SALES_TREND_STORAGE_KEY); } catch (e) { /* 무시 */ }
+}
+
+function resetSalesTrend() {
+  SALES_PARSED = null;
+  SALES_SCOPE  = '본부';
+  document.getElementById('rev2-upload-name').textContent = '';
+  document.getElementById('rev2-upload-card').classList.remove('has-file');
+  document.getElementById('rev2-scope-hq').classList.add('active');
+  document.getElementById('rev2-scope-team1').classList.remove('active');
+  document.getElementById('rev2-status').textContent = '';
+  clearSalesTrendStorage();
+  renderSalesTrend();
 }
 
 function setupSalesUpload() {
