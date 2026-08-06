@@ -380,6 +380,16 @@
   }
   .rev2-scope-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .rev2-scope-btn:hover:not(.active) { color: var(--text); border-color: var(--accent); }
+  .rev2-team1-members { margin-bottom: 16px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .rev2-team1-checkboxes { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; }
+  .rev2-member-chip { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; }
+  .rev2-member-chip input[type="checkbox"] { cursor: pointer; }
+  .rev2-member-chip-base { cursor: default; }
+  .rev2-member-chip-base input[type="checkbox"] { cursor: default; }
+  .rev2-member-tag { font-size: 11px; color: var(--text-sub); }
+  .rev2-team1-target-line { font-size: 12px; color: var(--text-sub); }
+  .rev2-team1-distort-notice { font-size: 12px; color: var(--del); background: #3d1f0f; border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
+  .rev2-distort-mark { color: var(--del); font-weight: 700; margin-left: 2px; }
   .rev2-summary-row { grid-template-columns: repeat(6, 1fr); }
   .rev2-footnote { font-size: 11px; color: var(--text-sub); margin-top: 10px; }
   @media (max-width: 900px) { .rev2-summary-row { grid-template-columns: repeat(2, 1fr); } }
@@ -585,6 +595,11 @@
         <button class="rev2-scope-btn"        id="rev2-scope-team1" onclick="setSalesScope('팀1')">공공영업1팀</button>
       </div>
 
+      <div class="rev2-team1-members" id="rev2-team1-members" style="display:none">
+        <div class="rev2-team1-checkboxes" id="rev2-team1-checkboxes"></div>
+        <div class="rev2-team1-target-line" id="rev2-team1-target-line"></div>
+      </div>
+
       <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
         <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
         <div class="upload-icon">📊</div>
@@ -606,6 +621,7 @@
 
       <div id="rev2-content" style="display:none">
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
+        <div class="rev2-team1-distort-notice" id="rev2-team1-distort-summary" style="display:none">※ 목표는 기본 인원(조영오·양소예·정인수) 기준 고정값입니다. 추가 인원의 실적·파이프라인이 포함되어 달성률이 높게 산출됩니다.</div>
 
         <div class="chart-card">
           <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
@@ -621,6 +637,7 @@
             <div class="rev2-unmatched-list" id="rev2-unmatched-list" style="display:none"></div>
           </div>
           <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
+          <div class="rev2-team1-distort-notice" id="rev2-team1-distort-chart" style="display:none">※ 목표는 기본 인원(조영오·양소예·정인수) 기준 고정값입니다. 추가 인원의 실적·파이프라인이 포함되어 달성률이 높게 산출됩니다.</div>
         </div>
 
         <div class="chart-card" id="rev2-pipe-card">
@@ -734,6 +751,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadRevenueForecast();
   await restoreSalesCompareData();
   await restoreSalesTrendData();
+  await restoreTeam1Members(); // sales_trend가 복원한 scope보다 team1_members가 최종적으로 우선한다
+  document.getElementById('rev2-scope-hq').classList.toggle('active', SALES_SCOPE === '본부');
+  document.getElementById('rev2-scope-team1').classList.toggle('active', SALES_SCOPE === '팀1');
+  renderTeam1MembersUI();
+  renderSalesTrend();
   await restoreLastActiveTab();
 });
 
@@ -1394,11 +1416,14 @@ async function clearAllStoredData() {
   resetAll('sal');
   resetSalesTrend();
   REVENUE_FORECAST = {};
+  TEAM1_SELECTED_EXTRAS = [];
+  renderTeam1MembersUI();
   if (typeof renderForecastSection === 'function') renderForecastSection();
   try {
     if (window.idbKeyval) {
       await idbKeyval.del('revenue_forecast');
       await idbKeyval.del(LAST_TAB_STORAGE_KEY);
+      await idbKeyval.del('team1_members');
     }
   } catch (e) { /* 무시 */ }
   alert('저장된 데이터를 모두 삭제했습니다.');
@@ -2653,8 +2678,15 @@ const SALES_TARGET_2026 = {
     유지보수: { Q1: 17,    Q2: 22,    Q3: 36,    Q4: 53    }
   }
 };
-const SALES_TEAM1_REPS = ['조영오', '양소예', '정인수'];
-const SALES_QUARTERS   = ['Q1', 'Q2', 'Q3', 'Q4'];
+// 1팀 인원: 기본 3명(항상 포함, 해제 불가) + 선택적 추가 인원(체크 시에만 실적/파이프라인에 포함)
+// 목표(SALES_TARGET_2026.팀1)는 이 선택과 무관하게 항상 기본 3명 기준 고정값이다.
+const TEAM1_BASE_MEMBERS  = ['조영오', '양소예', '정인수'];
+const TEAM1_EXTRA_MEMBERS = ['오수택', '윤호영'];
+let TEAM1_SELECTED_EXTRAS = []; // TEAM1_EXTRA_MEMBERS의 부분집합 — 체크된 추가 인원
+
+function getTeam1ActiveMembers() { return TEAM1_BASE_MEMBERS.concat(TEAM1_SELECTED_EXTRAS); }
+
+const SALES_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 
 let SALES_PARSED = null; // parseSalesExcel() 결과
 let SALES_SCOPE  = '본부';
@@ -2760,8 +2792,8 @@ function excelDateToMonth(v) {
   return null;
 }
 
-function aggregateTeam1ByMonth(rows) {
-  const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
+function aggregateTeam1ByMonth(rows, members) {
+  const repsNorm = members.map(x => x.replace(/\s/g, ''));
   const months = {};
   rows.forEach(r => {
     if (!repsNorm.includes(r.rep.replace(/\s/g, ''))) return;
@@ -2809,24 +2841,34 @@ function parseSalesExcel(wb) {
 
   const teamHdr = findTeamDetailHeader(raw);
   const teamRows = parseTeamDetailRows(raw, teamHdr);
-  const team1Months = aggregateTeam1ByMonth(teamRows);
+  // 1팀 집계는 인원 선택(체크박스)에 따라 매번 달라지므로 여기서 캐시하지 않고
+  // getScopeData()에서 현재 선택된 인원 기준으로 그때그때 다시 계산한다.
 
-  // 당월 예상액: 1팀 기준일 때는 본부 요약 행 값이 아니라 1팀 3명 상세행을 재집계
+  return {
+    sheetName, hqHeaderFound: !!hqHdr, hqMonths, forecast,
+    teamHeaderFound: !!teamHdr, teamRows,
+  };
+}
+
+// 1팀 스코프 데이터를 현재 선택된 인원(members) 기준으로 매번 새로 계산한다.
+function computeTeam1ScopeData(members) {
+  if (!SALES_PARSED) return null;
+  const teamRows = SALES_PARSED.teamRows || [];
+  const months = aggregateTeam1ByMonth(teamRows, members);
+
+  // 당월 예상액: 본부 요약 행 값이 아니라 선택된 인원의 상세행을 재집계
   let team1Forecast = null;
-  if (forecast) {
-    const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
-    const monthRows = teamRows.filter(r => excelDateToMonth(r.billDate) === forecast.month && repsNorm.includes(r.rep.replace(/\s/g, '')));
+  if (SALES_PARSED.forecast) {
+    const repsNorm = members.map(x => x.replace(/\s/g, ''));
+    const monthRows = teamRows.filter(r => excelDateToMonth(r.billDate) === SALES_PARSED.forecast.month && repsNorm.includes(r.rep.replace(/\s/g, '')));
     const agg = monthRows.reduce((a, r) => {
       a.product += r.product; a.goods += r.goods; a.service += r.service; a.maint += r.maint; a.total += r.total;
       return a;
     }, { product: 0, goods: 0, service: 0, maint: 0, total: 0 });
-    team1Forecast = { month: forecast.month, ...agg };
+    team1Forecast = { month: SALES_PARSED.forecast.month, ...agg };
   }
 
-  return {
-    sheetName, hqHeaderFound: !!hqHdr, hqMonths, forecast,
-    teamHeaderFound: !!teamHdr, teamRows, team1Months, team1Forecast,
-  };
+  return { months, forecast: team1Forecast, headerFound: SALES_PARSED.teamHeaderFound };
 }
 
 // ─── 매출 추이: 목표/실적 계산 ────────────────────────────────────────────────
@@ -2834,7 +2876,7 @@ function parseSalesExcel(wb) {
 function getScopeData(scope) {
   if (!SALES_PARSED) return null;
   if (scope === '본부') return { months: SALES_PARSED.hqMonths, forecast: SALES_PARSED.forecast, headerFound: SALES_PARSED.hqHeaderFound };
-  return { months: SALES_PARSED.team1Months, forecast: SALES_PARSED.team1Forecast, headerFound: SALES_PARSED.teamHeaderFound };
+  return computeTeam1ScopeData(getTeam1ActiveMembers());
 }
 
 // 1~12월 전체에 대한 시리즈 생성 (예상월은 예상값으로 대체 + isForecast 플래그)
@@ -2906,7 +2948,7 @@ function getInvoicedAmountByProjectCode() {
 // 매출 예상 입력 표와 차트/요약카드가 모두 이 목록을 공유한다.
 function getPipelineCandidateRows(scope) {
   if (!INV_RESULT) return null; // 인벤토리 비교 탭에서 분석이 아직 실행되지 않음
-  const repsNorm = SALES_TEAM1_REPS.map(x => x.replace(/\s/g, ''));
+  const repsNorm = getTeam1ActiveMembers().map(x => x.replace(/\s/g, ''));
   const inScope = row => {
     if (scope !== '팀1') return true;
     const rep = String(row['영업담당자'] || '').replace(/\s/g, '');
@@ -3135,14 +3177,21 @@ function renderSalesSummary(scope, series, forecastData) {
   const shortfallColor = shortfallPositive ? 'var(--down)' : 'var(--up)';
   const shortfallStr   = Math.abs(s.shortfallEok).toFixed(1) + '억';
 
+  // 1팀 스코프에서 추가 인원(오수택/윤호영)이 포함되면 목표는 그대로인데 실적/파이프라인만 늘어 달성률이 왜곡됨을 주의 환기.
+  const showDistortion = scope === '팀1' && TEAM1_SELECTED_EXTRAS.length > 0;
+  const distortMark = showDistortion ? '<span class="rev2-distort-mark">*</span>' : '';
+
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.cumActualEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">파이프라인(입력 기준)</div><div class="s-value">${pipeStr}</div>${pipeSub ? `<div class="s-sub">${pipeSub}</div>` : ''}</div>
     <div class="summary-card"><div class="s-label">실적+파이프라인 합계</div><div class="s-value">${s.combinedEok.toFixed(1)}억</div></div>
     <div class="summary-card"><div class="s-label">${shortfallLabel}</div><div class="s-value" style="color:${shortfallColor}">${shortfallStr}</div></div>
-    <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%</div></div>
+    <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%${distortMark}</div></div>
   `;
+
+  const distortEl = document.getElementById('rev2-team1-distort-summary');
+  if (distortEl) distortEl.style.display = showDistortion ? '' : 'none';
 }
 
 function toggleUnmatchedDetail(e) {
@@ -3266,6 +3315,9 @@ function renderSalesChart1(scope, series, forecastData) {
   } else {
     excludedEl.textContent = '※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.';
   }
+
+  const distortChartEl = document.getElementById('rev2-team1-distort-chart');
+  if (distortChartEl) distortChartEl.style.display = (scope === '팀1' && TEAM1_SELECTED_EXTRAS.length > 0) ? '' : 'none';
 }
 
 // [보조 차트] 확도별 파이프라인 구성 (가로 누적 막대) — 입력된 예상금액을 사업의 확도 구간별로 집계
@@ -3562,8 +3614,63 @@ function setSalesScope(scope) {
   SALES_SCOPE = scope;
   document.getElementById('rev2-scope-hq').classList.toggle('active', scope === '본부');
   document.getElementById('rev2-scope-team1').classList.toggle('active', scope === '팀1');
+  renderTeam1MembersUI();
   renderSalesTrend();
   saveSalesTrendData();
+  saveTeam1Members();
+}
+
+// ─── 매출 추이: 1팀 인원 선택 (기본 3명 고정 + 추가 인원 선택) ──────────────────
+// 목표(SALES_TARGET_2026.팀1)는 이 선택과 무관하게 항상 고정 — 실적/파이프라인 집계에만 영향을 준다.
+
+function renderTeam1MembersUI() {
+  const container = document.getElementById('rev2-team1-members');
+  if (!container) return;
+  if (SALES_SCOPE !== '팀1') { container.style.display = 'none'; return; }
+  container.style.display = '';
+
+  const baseHtml = TEAM1_BASE_MEMBERS.map(name => `
+    <label class="rev2-member-chip rev2-member-chip-base">
+      <input type="checkbox" checked disabled>
+      <span>${escHtml(name)}</span><span class="rev2-member-tag">(기본)</span>
+    </label>`).join('');
+  const extraHtml = TEAM1_EXTRA_MEMBERS.map(name => `
+    <label class="rev2-member-chip">
+      <input type="checkbox" ${TEAM1_SELECTED_EXTRAS.includes(name) ? 'checked' : ''} onchange="toggleTeam1Extra('${name}', this.checked)">
+      <span>${escHtml(name)}</span>
+    </label>`).join('');
+  document.getElementById('rev2-team1-checkboxes').innerHTML = baseHtml + extraHtml;
+
+  const active = getTeam1ActiveMembers();
+  document.getElementById('rev2-team1-target-line').textContent =
+    `집계 대상: ${active.join(', ')} (${active.length}명) · 목표는 기본 3명 기준`;
+}
+
+function toggleTeam1Extra(name, checked) {
+  if (checked) {
+    if (!TEAM1_SELECTED_EXTRAS.includes(name)) TEAM1_SELECTED_EXTRAS.push(name);
+  } else {
+    TEAM1_SELECTED_EXTRAS = TEAM1_SELECTED_EXTRAS.filter(n => n !== name);
+  }
+  renderTeam1MembersUI();
+  saveTeam1Members();
+  renderSalesTrend(); // 요약카드/메인차트/보조차트/매출 예상 입력 목록 전체 재계산
+}
+
+async function saveTeam1Members() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set('team1_members', { scope: SALES_SCOPE, extras: TEAM1_SELECTED_EXTRAS }); }
+  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+
+async function restoreTeam1Members() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get('team1_members');
+    if (!saved) return;
+    if (Array.isArray(saved.extras)) TEAM1_SELECTED_EXTRAS = saved.extras.filter(n => TEAM1_EXTRA_MEMBERS.includes(n));
+    if (saved.scope === '팀1' || saved.scope === '본부') SALES_SCOPE = saved.scope;
+  } catch (e) { /* 저장 데이터가 깨졌으면 기본값 유지 */ }
 }
 
 function processSalesFile(file) {
@@ -3641,6 +3748,7 @@ function resetSalesTrend() {
   document.getElementById('rev2-scope-team1').classList.remove('active');
   document.getElementById('rev2-status').textContent = '';
   clearSalesTrendStorage();
+  renderTeam1MembersUI();
   renderSalesTrend();
 }
 
