@@ -389,6 +389,7 @@
   .rev2-legend-item { display: flex; align-items: center; gap: 6px; }
   .rev2-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
   .rev2-legend-dot-dashed { width: 16px; height: 0; border-top: 2px dashed; display: inline-block; flex-shrink: 0; }
+  .rev2-actual-status-line { font-size: 11px; color: var(--text-sub); margin: -6px 0 10px; }
   .rev2-pipeline-notice {
     font-size: 12px; color: var(--text-sub); background: var(--surface2);
     border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;
@@ -644,8 +645,10 @@
         <div class="chart-card">
           <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
           <div class="rev2-legend" id="rev2-main-legend"></div>
+          <div class="rev2-actual-status-line" id="rev2-actual-status-line"></div>
           <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
           <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
+          <div class="rev2-footnote" id="rev2-forecast-month-footnote" style="display:none"></div>
           <div class="rev2-footnote" id="rev2-pipeline-source-footnote">※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.</div>
           <div class="rev2-footnote" id="rev2-excluded-footnote">※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.</div>
           <div class="rev2-footnote" id="rev2-remainder-footnote">※ 100% 구간은 인벤토리 수주금액에서 매출 실적으로 이미 청구된 금액을 차감한 미청구 잔여분 기준으로 후보 목록에 반영됩니다.</div>
@@ -3290,12 +3293,26 @@ function computeForecastSummary(scope) {
 }
 
 // 현재 시점(마지막 실측월) 기준 누적 목표 대비 실적 + 파이프라인을 계산
+// 시리즈에서 "확정 실적 마지막 월" 인덱스와 "당월 예상" 인덱스를 찾는다(0-based, 예상은 최대 1개).
+function findConfirmedAndForecastIdx(series) {
+  let lastConfirmedIdx = -1, forecastIdx = -1;
+  series.forEach((s, i) => {
+    if (s.hasData && !s.isForecast) lastConfirmedIdx = i;
+    if (s.isForecast) forecastIdx = i;
+  });
+  return { lastConfirmedIdx, forecastIdx };
+}
+
 function computeSalesSummary(scope, series, forecastData) {
   const annualTargetEok = millionToEok(annualTargetTotal(scope));
-  const cumActualWon = buildCumulativeActual(series);
+  const cumActualWon = buildCumulativeActual(series); // 확정+당월 예상 모두 포함된 누적(기존 로직 그대로)
+  const { lastConfirmedIdx, forecastIdx } = findConfirmedAndForecastIdx(series);
+
   let lastIdx = -1;
   cumActualWon.forEach((v, i) => { if (v != null) lastIdx = i; });
-  const cumActualEok = lastIdx >= 0 ? wonToEok(cumActualWon[lastIdx]) : 0;
+  const cumActualEok = lastIdx >= 0 ? wonToEok(cumActualWon[lastIdx]) : 0; // 확정+당월예상 누적 — 달성률/현재시점 목표 기준
+  const confirmedEok = lastConfirmedIdx >= 0 ? wonToEok(cumActualWon[lastConfirmedIdx]) : 0; // 확정 실적만
+  const forecastMonthEok = forecastIdx >= 0 ? wonToEok(series[forecastIdx].total || 0) : 0; // 당월 예상액 그 자체(월 단독, 누적 아님)
   const lastMonth = lastIdx >= 0 ? lastIdx + 1 : 0;
 
   const currentCumTargetEok = lastMonth > 0 ? millionToEok(cumulativeTargetAt(scope, lastMonth)) : 0;
@@ -3303,10 +3320,13 @@ function computeSalesSummary(scope, series, forecastData) {
 
   const pipelineEok = forecastData ? millionToEok(forecastData.inputTotalMillion) : null;
   const pipeEok = pipelineEok != null ? pipelineEok : 0;
-  const combinedEok  = cumActualEok + pipeEok;
+  const combinedEok  = cumActualEok + pipeEok; // = confirmedEok + forecastMonthEok + pipeEok
   const shortfallEok = annualTargetEok - combinedEok; // 양수=부족, 음수=초과
 
-  return { annualTargetEok, cumActualEok, pipelineEok, forecastData, combinedEok, shortfallEok, cumRate, lastIdx };
+  return {
+    annualTargetEok, cumActualEok, pipelineEok, forecastData, combinedEok, shortfallEok, cumRate, lastIdx,
+    confirmedEok, forecastMonthEok, lastConfirmedIdx, forecastIdx,
+  };
 }
 
 function renderSalesSummary(scope, series, forecastData) {
@@ -3321,11 +3341,16 @@ function renderSalesSummary(scope, series, forecastData) {
   const shortfallColor = shortfallPositive ? 'var(--down)' : 'var(--up)';
   const shortfallStr   = Math.abs(s.shortfallEok).toFixed(1) + '억';
 
+  const confirmedSub = s.lastConfirmedIdx >= 0 ? `2026년 ${series[s.lastConfirmedIdx].month}월까지 확정` : '';
+  const combinedSub = s.forecastIdx >= 0
+    ? `확정 ${s.confirmedEok.toFixed(1)} + 예상 ${s.forecastMonthEok.toFixed(1)} + 파이프라인 ${(s.pipelineEok || 0).toFixed(1)}`
+    : '';
+
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.cumActualEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.confirmedEok.toFixed(1)}억</div>${confirmedSub ? `<div class="s-sub">${confirmedSub}</div>` : ''}</div>
     <div class="summary-card"><div class="s-label">파이프라인(입력 기준)</div><div class="s-value">${pipeStr}</div>${pipeSub ? `<div class="s-sub">${pipeSub}</div>` : ''}</div>
-    <div class="summary-card"><div class="s-label">실적+파이프라인 합계</div><div class="s-value">${s.combinedEok.toFixed(1)}억</div></div>
+    <div class="summary-card"><div class="s-label">실적+파이프라인 합계</div><div class="s-value">${s.combinedEok.toFixed(1)}억</div>${combinedSub ? `<div class="s-sub">${combinedSub}</div>` : ''}</div>
     <div class="summary-card"><div class="s-label">${shortfallLabel}</div><div class="s-value" style="color:${shortfallColor}">${shortfallStr}</div></div>
     <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%</div></div>
   `;
@@ -3367,6 +3392,32 @@ const salesChartCommonScales = {
   }
 };
 
+// "오늘" 위치에 회색 세로 점선 + 라벨을 그리는 커스텀 플러그인 (외부 annotation 플러그인 없이 직접 구현)
+const todayLinePlugin = {
+  id: 'todayLine',
+  afterDraw(chart) {
+    const opts = chart.options.plugins && chart.options.plugins.todayLine;
+    if (!opts || opts.monthIndex == null) return;
+    const { ctx, chartArea, scales } = chart;
+    const x = scales.x.getPixelForValue(opts.monthIndex);
+    if (x == null || isNaN(x) || x < chartArea.left || x > chartArea.right) return;
+    ctx.save();
+    ctx.strokeStyle = '#5a5f78';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#8890b5';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(opts.label, x, chartArea.top - 6);
+    ctx.restore();
+  }
+};
+
 // [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
 function renderSalesChart1(scope, series, forecastData) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
@@ -3376,28 +3427,45 @@ function renderSalesChart1(scope, series, forecastData) {
   const pipelineEok = forecastData ? millionToEok(forecastData.inputTotalMillion) : null;
 
   const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
-  const cumActualWon = buildCumulativeActual(series);
+  const cumActualWon = buildCumulativeActual(series); // 확정+당월예상 모두 포함된 누적(기존 로직)
   const cumActualEok = cumActualWon.map(v => v == null ? null : wonToEok(v));
+  const { lastConfirmedIdx, forecastIdx } = findConfirmedAndForecastIdx(series);
 
-  let lastIdx = -1;
-  cumActualEok.forEach((v, i) => { if (v != null) lastIdx = i; });
+  // 확정 실적선: 마지막 확정월까지만 표시(당월 예상은 별도 데이터셋으로 분리)
+  const confirmedArr = cumActualEok.map((v, i) => (i <= lastConfirmedIdx ? v : null));
 
-  // 파이프라인 반영 전망: 마지막 실적 월의 누적값에서 시작해, 이후 월은 그 달에 실제로 입력된 예상금액만 누적
+  // 당월 예상선: 마지막 확정월 지점 ↔ 당월(예상) 지점 두 점만 이어서 표시
+  let forecastSegArr = null, forecastPointRadius = null;
+  if (forecastIdx >= 0) {
+    forecastSegArr = new Array(12).fill(null);
+    forecastPointRadius = new Array(12).fill(0);
+    if (lastConfirmedIdx >= 0) forecastSegArr[lastConfirmedIdx] = cumActualEok[lastConfirmedIdx];
+    forecastSegArr[forecastIdx] = cumActualEok[forecastIdx];
+    forecastPointRadius[forecastIdx] = 5;
+  }
+
+  // 파이프라인 반영 전망: 당월 예상이 있으면 그 지점부터, 없으면 기존처럼 마지막 확정월부터 시작
+  const pipelineStartIdx = forecastIdx >= 0 ? forecastIdx : lastConfirmedIdx;
   let pipelineArr = null;
-  if (hasInput && lastIdx >= 0) {
+  if (hasInput && pipelineStartIdx >= 0) {
     pipelineArr = new Array(12).fill(null);
-    pipelineArr[lastIdx] = cumActualEok[lastIdx];
-    let running = cumActualEok[lastIdx];
-    for (let m = lastIdx + 2; m <= 12; m++) {
+    pipelineArr[pipelineStartIdx] = cumActualEok[pipelineStartIdx];
+    let running = cumActualEok[pipelineStartIdx];
+    for (let m = pipelineStartIdx + 2; m <= 12; m++) {
       running += millionToEok(forecastData.monthlyMillion[m] || 0);
       pipelineArr[m - 1] = running;
     }
   }
 
   const datasets = [
-    { label: '누적 실적', data: cumActualEok, borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.10)',
+    { label: '누적 실적', data: confirmedArr, borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.10)',
       borderWidth: 2, fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 },
   ];
+  if (forecastSegArr) {
+    datasets.push({ label: '당월 예상', data: forecastSegArr, borderColor: 'rgba(74,158,255,0.65)', backgroundColor: 'transparent',
+      borderWidth: 2, borderDash: [4, 3], fill: false, spanGaps: true, tension: 0, pointRadius: forecastPointRadius,
+      pointBackgroundColor: 'rgba(74,158,255,0.9)' });
+  }
   if (pipelineArr) {
     datasets.push({ label: '파이프라인 반영 전망', data: pipelineArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
       borderWidth: 2, borderDash: [5, 4], fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 });
@@ -3405,19 +3473,30 @@ function renderSalesChart1(scope, series, forecastData) {
   datasets.push({ label: '누적 목표', data: cumTargetEok, borderColor: '#e34948', backgroundColor: 'transparent',
     borderWidth: 1.5, fill: false, pointRadius: 0, tension: 0.1 });
 
+  // "오늘" 세로선 — 차트의 연도(2026)와 시스템 연도가 같을 때만 표시
+  const today = new Date();
+  const todayMonthIdx = today.getFullYear() === 2026 ? today.getMonth() : null; // 0-based
+
   salesChart1 = new Chart(ctx, {
     type: 'line',
     data: { labels: series.map(s => s.month + '월'), datasets },
+    plugins: [todayLinePlugin],
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },
       interaction: { mode: 'index', intersect: false },
       scales: salesChartCommonScales,
       plugins: {
         legend: { display: false },
+        todayLine: todayMonthIdx != null ? { monthIndex: todayMonthIdx, label: `오늘 (${todayMonthIdx + 1}월)` } : null,
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
-          callbacks: { label: item => `${item.dataset.label}: ${item.formattedValue}억` },
+          callbacks: {
+            label: item => item.dataset.label === '당월 예상'
+              ? `${item.dataset.label}: ${item.formattedValue}억 — 확정 실적 아님 (예상)`
+              : `${item.dataset.label}: ${item.formattedValue}억`,
+          },
         }
       }
     }
@@ -3425,14 +3504,34 @@ function renderSalesChart1(scope, series, forecastData) {
 
   // 커스텀 HTML 범례
   const annualTargetEok = millionToEok(annualTargetTotal(scope));
-  const actualNow = lastIdx >= 0 ? cumActualEok[lastIdx] : 0;
+  const actualNow = lastConfirmedIdx >= 0 ? cumActualEok[lastConfirmedIdx] : 0;
   let legendHtml = `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#2a78d6"></span>누적 실적 ${actualNow.toFixed(1)}억</span>`;
+  if (forecastIdx >= 0) {
+    const forecastMonthEok = wonToEok(series[forecastIdx].total || 0);
+    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#4a9eff"></span>당월 예상 ${forecastMonthEok.toFixed(1)}억 (점선)</span>`;
+  }
   if (hasInput) {
     const sectionLabelStr = PIPELINE_SECTIONS.filter(id => PIPELINE_PROB_FILTER[id]).map(id => PROB_SHORT_LABELS[id]).join('·');
     legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>파이프라인 ${pipelineEok.toFixed(1)}억 (${sectionLabelStr}, 점선)</span>`;
   }
   legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#e34948"></span>누적 목표 ${annualTargetEok.toFixed(1)}억</span>`;
   document.getElementById('rev2-main-legend').innerHTML = legendHtml;
+
+  // 확정 실적 마지막 월 / 당월 예상 월을 자동 인식해 상단에 표시
+  const statusEl = document.getElementById('rev2-actual-status-line');
+  let statusText = '';
+  if (lastConfirmedIdx >= 0) statusText += `확정 실적: 2026년 ${series[lastConfirmedIdx].month}월까지`;
+  if (forecastIdx >= 0) statusText += (statusText ? ' · ' : '') + `${series[forecastIdx].month}월은 예상액`;
+  statusEl.textContent = statusText;
+  statusEl.style.display = statusText ? '' : 'none';
+
+  const forecastMonthFootnoteEl = document.getElementById('rev2-forecast-month-footnote');
+  if (forecastIdx >= 0) {
+    forecastMonthFootnoteEl.textContent = `※ ${series[forecastIdx].month}월은 확정 실적이 아닌 매출 예상액이며, 실적 확정 시 자동으로 반영됩니다.`;
+    forecastMonthFootnoteEl.style.display = '';
+  } else {
+    forecastMonthFootnoteEl.style.display = 'none';
+  }
 
   const allProbUnchecked = PIPELINE_SECTIONS.every(id => !PIPELINE_PROB_FILTER[id]);
   const noticeEl = document.getElementById('rev2-pipeline-notice');
