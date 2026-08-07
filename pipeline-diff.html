@@ -407,6 +407,24 @@
   .rev2-unmatched-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rev2-unmatched-row .amt  { flex-shrink: 0; color: var(--text-sub); }
 
+  .rev2-prob-filter-row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .rev2-prob-chip { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; }
+  .rev2-prob-chip input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-color: var(--chip-color, var(--accent)); }
+  .rev2-prob-chip-amt { font-size: 11px; color: var(--text-sub); }
+
+  .rev2-unassigned-control { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; color: var(--text-sub); }
+  .rev2-unassigned-checkbox { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text); }
+  .rev2-unassigned-checkbox input[type="checkbox"] { cursor: pointer; }
+  .rev2-unassigned-amt { color: var(--text-sub); }
+  .rev2-unassigned-list { margin-top: 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: 100%; }
+  .rev2-unassigned-row { display: flex; gap: 10px; padding: 6px 10px; font-size: 11.5px; border-bottom: 1px solid var(--border); align-items: center; }
+  .rev2-unassigned-row:last-child { border-bottom: none; }
+  .rev2-unassigned-row .code { font-family: monospace; color: var(--accent); flex-shrink: 0; width: 100px; }
+  .rev2-unassigned-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rev2-unassigned-row .sales { flex-shrink: 0; width: 60px; color: var(--text-sub); }
+  .rev2-unassigned-row .affil { flex-shrink: 0; width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-sub); }
+  .rev2-unassigned-row .amt  { flex-shrink: 0; color: var(--text-sub); width: 60px; text-align: right; }
+
   /* ── 매출 예상 입력 ─────────────────────────────────────────────────── */
   .rev2-forecast-header { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .rev2-unit-hint { font-size: 11px; font-weight: 500; color: var(--text-sub); }
@@ -586,6 +604,15 @@
         <button class="rev2-scope-btn"        id="rev2-scope-team1" onclick="setSalesScope('팀1')">공공영업1팀</button>
       </div>
       <div class="rev2-affil-fallback-notice" id="rev2-affil-fallback-notice" style="display:none">소속 정보를 찾지 못해 담당자명 기준으로 분류되었습니다</div>
+      <div class="rev2-unassigned-control" id="rev2-unassigned-control" style="display:none">
+        <label class="rev2-unassigned-checkbox">
+          <input type="checkbox" id="rev2-unassigned-checkbox-input" checked onchange="toggleIncludeUnassigned(this.checked)">
+          <span>소속 미분류 건 포함</span>
+          <span class="rev2-unassigned-amt" id="rev2-unassigned-amt"></span>
+        </label>
+        <a href="#" class="rev2-detail-link" id="rev2-unassigned-toggle" onclick="toggleUnassignedDetail(event)">[상세보기]</a>
+        <div class="rev2-unassigned-list" id="rev2-unassigned-list" style="display:none"></div>
+      </div>
 
       <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
         <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
@@ -609,19 +636,25 @@
       <div id="rev2-content" style="display:none">
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
+        <div class="chart-card" id="rev2-prob-filter-card">
+          <div class="chart-card-title">파이프라인 포함 구간</div>
+          <div class="rev2-prob-filter-row" id="rev2-prob-filter-row"></div>
+        </div>
+
         <div class="chart-card">
           <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
           <div class="rev2-legend" id="rev2-main-legend"></div>
           <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
           <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
-          <div class="rev2-footnote">※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.</div>
+          <div class="rev2-footnote" id="rev2-pipeline-source-footnote">※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.</div>
           <div class="rev2-footnote" id="rev2-excluded-footnote">※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.</div>
-          <div class="rev2-footnote">※ 100% 구간은 인벤토리 수주금액에서 매출 실적으로 이미 청구된 금액을 차감한 미청구 잔여분 기준으로 후보 목록에 반영됩니다.</div>
+          <div class="rev2-footnote" id="rev2-remainder-footnote">※ 100% 구간은 인벤토리 수주금액에서 매출 실적으로 이미 청구된 금액을 차감한 미청구 잔여분 기준으로 후보 목록에 반영됩니다.</div>
           <div class="rev2-unmatched-notice" id="rev2-unmatched-notice" style="display:none">
             <span id="rev2-unmatched-text"></span>
             <a href="#" class="rev2-detail-link" id="rev2-unmatched-toggle" onclick="toggleUnmatchedDetail(event)">[상세보기]</a>
             <div class="rev2-unmatched-list" id="rev2-unmatched-list" style="display:none"></div>
           </div>
+          <div class="rev2-footnote" id="rev2-unassigned-footnote" style="display:none"></div>
           <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
         </div>
 
@@ -734,6 +767,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupCard('sal', 'curr');
   setupSalesUpload();
   await loadRevenueForecast();
+  await restorePipelineProbFilter();
+  await restoreIncludeUnassigned();
   await restoreSalesCompareData();
   await restoreSalesTrendData();
   await restoreLastActiveTab();
@@ -1193,6 +1228,12 @@ function parseInventorySheet(wb) {
   if (colAffil >= 0) {
     const uniqueAffils = [...new Set(dataRows.map(r => String(r[colAffil] || '').trim()).filter(Boolean))];
     console.log('[1팀 판별] 인벤토리 소속 고유 목록:', targetName, uniqueAffils);
+    let t1 = 0, t2 = 0, unassigned = 0;
+    dataRows.forEach(r => {
+      const cls = classifyAffiliation(r[colAffil]);
+      if (cls === 'team1') t1++; else if (cls === 'team2') t2++; else unassigned++;
+    });
+    console.log('[1팀 판별] 인벤토리', targetName, '— 1팀:', t1, '/ 2팀:', t2, '/ 미분류:', unassigned);
   } else {
     console.warn('[1팀 판별] 인벤토리 소속 컬럼을 찾지 못했습니다 — 담당자명 폴백 사용:', targetName);
   }
@@ -1206,6 +1247,7 @@ function parseInventorySheet(wb) {
       '고객사명':     s(colCust).trim(),
       '영업담당자':   s(colSales),
       '소속':         s(colAffil).trim(),
+      '__hasAffilCol': colAffil >= 0, // 소속 컬럼 자체를 이 파일에서 찾았는지 (미분류 판정과 이름 폴백을 구분하는 데 사용)
       '수주확도':     s(colStatus),
       '수주상태':     s(colState),
       '총합계':       n(colTotal),
@@ -1416,11 +1458,15 @@ async function clearAllStoredData() {
   resetAll('sal');
   resetSalesTrend();
   REVENUE_FORECAST = {};
+  PIPELINE_PROB_FILTER = { '100': true, '90': true, '75': true, '50f': true };
+  INCLUDE_UNASSIGNED = true;
   if (typeof renderForecastSection === 'function') renderForecastSection();
   try {
     if (window.idbKeyval) {
       await idbKeyval.del('revenue_forecast');
       await idbKeyval.del(LAST_TAB_STORAGE_KEY);
+      await idbKeyval.del('pipeline_prob_filter');
+      await idbKeyval.del('include_unassigned');
     }
   } catch (e) { /* 무시 */ }
   alert('저장된 데이터를 모두 삭제했습니다.');
@@ -2689,13 +2735,23 @@ function isTeam1Affiliation(raw) {
 function isTeam1ByNameFallback(name) {
   return TEAM1_FALLBACK_NAMES.includes(String(name || '').replace(/\s/g, ''));
 }
-// INV_FILES.curr 전 구간에서 프로젝트코드 → 소속 맵을 구성 (매출 실적의 소속 없는 행을 판정할 때 사용)
+// 소속 문자열을 'team1' / 'team2' / 'unassigned'(팀 정보 없음 또는 빈값)로 분류
+function classifyAffiliation(raw) {
+  const norm = normalizeAffiliation(raw);
+  if (!norm) return 'unassigned';
+  if (norm.includes('공공영업1팀')) return 'team1';
+  if (norm.includes('공공영업2팀')) return 'team2';
+  return 'unassigned';
+}
+// 1팀 스코프에서 소속 미분류 건을 포함할지 여부 (기본 포함)
+let INCLUDE_UNASSIGNED = true;
+// INV_FILES.curr 전 구간에서 프로젝트코드 → {소속값, 소속컬럼탐지여부} 맵을 구성 (매출 실적의 소속 없는 행을 판정할 때 사용)
 function buildInventoryAffiliationMap() {
   const map = {};
   INV_SECTIONS.forEach(s => {
     (INV_FILES.curr[s.id] && INV_FILES.curr[s.id].rows || []).forEach(r => {
       const code = String(r['프로젝트코드'] || '').trim();
-      if (code && !(code in map)) map[code] = r['소속'] || '';
+      if (code && !(code in map)) map[code] = { affil: r['소속'] || '', hasCol: !!r['__hasAffilCol'] };
     });
   });
   return map;
@@ -2812,16 +2868,18 @@ function excelDateToMonth(v) {
 function aggregateTeam1ByMonth(rows) {
   const affilMap = buildInventoryAffiliationMap();
   const months = {};
-  let team1Count = 0, unmappedCount = 0;
+  let team1Count = 0, unmappedCount = 0, unassignedCount = 0;
   rows.forEach(r => {
-    const affil = affilMap[r.code];
-    if (affil === undefined) { unmappedCount++; return; } // 인벤토리에 코드 없음 → 매핑 실패, 1팀에서 제외
+    const info = affilMap[r.code];
+    if (info === undefined) { unmappedCount++; return; } // 인벤토리에 코드 없음 → 매핑 실패, 1팀에서 제외
     let inTeam1;
-    if (affil) {
-      inTeam1 = isTeam1Affiliation(affil);
-    } else {
+    if (!info.hasCol) {
       TEAM1_AFFIL_FALLBACK_USED = true;
       inTeam1 = isTeam1ByNameFallback(r.rep);
+    } else {
+      const cls = classifyAffiliation(info.affil);
+      if (cls === 'unassigned') unassignedCount++;
+      inTeam1 = cls === 'team1' || (cls === 'unassigned' && INCLUDE_UNASSIGNED);
     }
     if (!inTeam1) return;
     team1Count++;
@@ -2831,7 +2889,7 @@ function aggregateTeam1ByMonth(rows) {
     months[m].product += r.product; months[m].goods += r.goods;
     months[m].service += r.service; months[m].maint += r.maint; months[m].total += r.total;
   });
-  console.log('[1팀 판별] 매출 실적 — 1팀 분류:', team1Count, '건 / 소속 매핑 실패(제외):', unmappedCount, '건');
+  console.log('[1팀 판별] 매출 실적 — 1팀 분류:', team1Count, '건 / 소속 매핑 실패(제외):', unmappedCount, '건 / 그중 미분류:', unassignedCount, '건');
   return months;
 }
 
@@ -2889,11 +2947,14 @@ function computeTeam1ScopeData() {
     const affilMap = buildInventoryAffiliationMap();
     const monthRows = teamRows.filter(r => {
       if (excelDateToMonth(r.billDate) !== SALES_PARSED.forecast.month) return false;
-      const affil = affilMap[r.code];
-      if (affil === undefined) return false;
-      if (affil) return isTeam1Affiliation(affil);
-      TEAM1_AFFIL_FALLBACK_USED = true;
-      return isTeam1ByNameFallback(r.rep);
+      const info = affilMap[r.code];
+      if (info === undefined) return false;
+      if (!info.hasCol) {
+        TEAM1_AFFIL_FALLBACK_USED = true;
+        return isTeam1ByNameFallback(r.rep);
+      }
+      const cls = classifyAffiliation(info.affil);
+      return cls === 'team1' || (cls === 'unassigned' && INCLUDE_UNASSIGNED);
     });
     const agg = monthRows.reduce((a, r) => {
       a.product += r.product; a.goods += r.goods; a.service += r.service; a.maint += r.maint; a.total += r.total;
@@ -2967,6 +3028,26 @@ function rateColor(r) { return r >= 100 ? 'var(--up)' : r >= 80 ? '#f5c518' : 'v
 const PIPELINE_SECTIONS = ['100', '90', '75', '50f'];
 const PIPELINE_LABELS   = { '100': '100% 잔여', '90': '90%', '75': '75%', '50f': '50%(F)' };
 const PIPELINE_COLORS   = { '100': '#2a78d6', '90': '#1baf7a', '75': '#eda100', '50f': '#eb6834' };
+const PROB_SHORT_LABELS = { '100': '100%잔여', '90': '90%', '75': '75%', '50f': '50%F' }; // 범례용 축약 표기
+// 파이프라인 계산에 포함할 확도 구간 — 체크박스로 조절, 기본은 4개 전체 포함
+let PIPELINE_PROB_FILTER = { '100': true, '90': true, '75': true, '50f': true };
+
+// 선택된 구간 구성에 맞춰 "파이프라인 전망은 ...을 합산한 값입니다" 주석 문구를 동적으로 만든다.
+function buildPipelineSourceFootnote() {
+  const nonHundredLabels = PIPELINE_SECTIONS.filter(id => id !== '100' && PIPELINE_PROB_FILTER[id]).map(id => PIPELINE_LABELS[id]).join('·');
+  const hundredIncluded = PIPELINE_PROB_FILTER['100'];
+  let body;
+  if (hundredIncluded && nonHundredLabels) {
+    body = `100% 구간의 미청구 잔여분과 ${nonHundredLabels} 구간의 수주금액을`;
+  } else if (hundredIncluded) {
+    body = `100% 구간의 미청구 잔여분을`;
+  } else if (nonHundredLabels) {
+    body = `${nonHundredLabels} 구간의 수주금액을`;
+  } else {
+    body = '선택된 구간의 수주금액을';
+  }
+  return `※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 기준으로, ${body} 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.`;
+}
 
 // 매출 상세 블록(SALES_PARSED.teamRows)의 실적만으로 프로젝트코드별 누적 매출을 집계 (원 단위)
 // teamRows는 "NO" 헤더 아래 실제 청구 라인만 담고 있어 "매출 예상액" 행은 애초에 포함되지 않는다.
@@ -2982,12 +3063,24 @@ function getInvoicedAmountByProjectCode() {
 // 매출 예상 입력 표와 차트/요약카드가 모두 이 목록을 공유한다.
 function getPipelineCandidateRows(scope) {
   if (!INV_RESULT) return null; // 인벤토리 비교 탭에서 분석이 아직 실행되지 않음
-  const inScope = row => {
+  const unassignedRows = []; // 소속 미분류 상세 목록 — INCLUDE_UNASSIGNED 상태와 무관하게 전체 수집(상세보기용)
+
+  // 1팀 스코프 여부 판정. 미분류 건은 unassignedRows에 기록하고, INCLUDE_UNASSIGNED가 true일 때만 포함.
+  const decideScope = (row, amountMillion, section) => {
     if (scope !== '팀1') return true;
-    const affil = row['소속'];
-    if (affil) return isTeam1Affiliation(affil);
-    TEAM1_AFFIL_FALLBACK_USED = true; // 소속 값이 비어있으면(컬럼을 못 찾았거나 셀이 빈 경우) 이름으로 폴백
-    return isTeam1ByNameFallback(row['영업담당자']);
+    if (!row['__hasAffilCol']) {
+      TEAM1_AFFIL_FALLBACK_USED = true; // 소속 컬럼 자체를 이 파일에서 못 찾은 경우 — 이름으로 폴백
+      return isTeam1ByNameFallback(row['영업담당자']);
+    }
+    const cls = classifyAffiliation(row['소속']);
+    if (cls === 'unassigned') {
+      unassignedRows.push({
+        code: String(row['프로젝트코드'] || '').trim(), name: row['프로젝트명'] || '', sales: row['영업담당자'] || '',
+        affiliation: row['소속'] || '', section, amountMillion,
+      });
+      return INCLUDE_UNASSIGNED;
+    }
+    return cls === 'team1';
   };
 
   const invoicedMap = getInvoicedAmountByProjectCode();
@@ -2996,7 +3089,7 @@ function getPipelineCandidateRows(scope) {
   const unmatched = [];
 
   const rows100 = (INV_FILES.curr['100'] && INV_FILES.curr['100'].rows) || [];
-  rows100.filter(inScope).forEach(r => {
+  rows100.forEach(r => {
     const code  = String(r['프로젝트코드'] || '').trim();
     const order = r['총합계'] || 0; // 백만원
     const invoicedWon = invoicedMap[code];
@@ -3009,7 +3102,7 @@ function getPipelineCandidateRows(scope) {
       unmatched.push({ code, name: r['프로젝트명'] || '', amountEok: millionToEok(order) });
       remainder = order; // 매칭 실패 시 차감 없이 전액
     }
-    if (remainder > AMT_EPS) { // 잔여분이 0보다 큰 건만 후보에 포함
+    if (remainder > AMT_EPS && decideScope(r, remainder, '100')) { // 잔여분이 0보다 큰 건만 후보에 포함
       rows.push({
         code, name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', section: '100',
         amountMillion: remainder, isRemainder: true,
@@ -3020,19 +3113,24 @@ function getPipelineCandidateRows(scope) {
 
   ['90', '75', '50f'].forEach(id => {
     const list = (INV_FILES.curr[id] && INV_FILES.curr[id].rows) || [];
-    list.filter(inScope).forEach(r => {
+    list.forEach(r => {
+      const amountMillion = r['총합계'] || 0;
+      if (!decideScope(r, amountMillion, id)) return;
       rows.push({
         code: String(r['프로젝트코드'] || '').trim(), name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', section: id,
-        amountMillion: r['총합계'] || 0, isRemainder: false,
+        amountMillion, isRemainder: false,
         orderDate: r['수주예정일'], revenueDate: r['매출예정일'],
       });
     });
   });
 
   console.log('[파이프라인 후보]', scope, { 총건수: rows.length, 매칭성공: matchedCount, 매칭실패: unmatchedCount });
-  if (scope === '팀1') console.log('[1팀 판별] 인벤토리 — 1팀 분류(후보) 건수:', rows.length);
+  if (scope === '팀1') {
+    console.log('[1팀 판별] 인벤토리 — 1팀 분류(후보) 건수:', rows.length);
+    console.log('[1팀 판별] 소속 미분류 건수:', unassignedRows.length, '/ 프로젝트코드:', unassignedRows.map(u => u.code));
+  }
 
-  return { rows, matchedCount, unmatchedCount, unmatched };
+  return { rows, matchedCount, unmatchedCount, unmatched, unassignedRows };
 }
 
 // ─── 매출 추이: 매출 예상 수기 입력 (IndexedDB 저장) ───────────────────────────
@@ -3143,13 +3241,20 @@ function computeForecastSummary(scope) {
   const cand = getPipelineCandidateRows(scope);
   if (!cand) return null;
 
+  // 확도 구간 체크박스 라벨용: PIPELINE_PROB_FILTER와 무관한 구간별 전체 금액
+  const sectionAmounts = { '100': 0, '90': 0, '75': 0, '50f': 0 };
+  cand.rows.forEach(r => { sectionAmounts[r.section] = (sectionAmounts[r.section] || 0) + r.amountMillion; });
+
+  // 파이프라인 포함 구간 체크박스로 걸러진 후보만 아래 집계에 사용
+  const filteredRows = cand.rows.filter(r => PIPELINE_PROB_FILTER[r.section]);
+
   const monthlyMillion   = {}; // 1~12 (2026년만) -> 합계
   const bySectionMillion = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 입력분만
   let inputCount = 0, noInputCount = 0, inputTotalMillion = 0, noInputAmountMillion = 0;
   let autoCount = 0, manualCount = 0;
   let excludedCount = 0, excludedMillion = 0; // 2026년이 아닌(주로 2027년 이후 매출청구일) 건 — 올해 차트에서 제외
 
-  cand.rows.forEach(c => {
+  filteredRows.forEach(c => {
     const entries = (REVENUE_FORECAST[c.code] || []).filter(e => e && e.월 && Number(e.금액) > 0);
     if (!entries.length) {
       noInputCount++;
@@ -3174,10 +3279,13 @@ function computeForecastSummary(scope) {
     });
   });
 
+  console.log('[확도 구간별 금액(백만)]', sectionAmounts);
+
   return {
-    candidates: cand.rows, matchedCount: cand.matchedCount, unmatchedCount: cand.unmatchedCount, unmatched: cand.unmatched,
+    candidates: filteredRows, matchedCount: cand.matchedCount, unmatchedCount: cand.unmatchedCount, unmatched: cand.unmatched,
+    unassignedRows: cand.unassignedRows,
     monthlyMillion, bySectionMillion, inputCount, noInputCount, inputTotalMillion, noInputAmountMillion,
-    autoCount, manualCount, excludedCount, excludedMillion,
+    autoCount, manualCount, excludedCount, excludedMillion, sectionAmounts,
   };
 }
 
@@ -3320,13 +3428,18 @@ function renderSalesChart1(scope, series, forecastData) {
   const actualNow = lastIdx >= 0 ? cumActualEok[lastIdx] : 0;
   let legendHtml = `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#2a78d6"></span>누적 실적 ${actualNow.toFixed(1)}억</span>`;
   if (hasInput) {
-    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>파이프라인 ${pipelineEok.toFixed(1)}억 (점선)</span>`;
+    const sectionLabelStr = PIPELINE_SECTIONS.filter(id => PIPELINE_PROB_FILTER[id]).map(id => PROB_SHORT_LABELS[id]).join('·');
+    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>파이프라인 ${pipelineEok.toFixed(1)}억 (${sectionLabelStr}, 점선)</span>`;
   }
   legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#e34948"></span>누적 목표 ${annualTargetEok.toFixed(1)}억</span>`;
   document.getElementById('rev2-main-legend').innerHTML = legendHtml;
 
+  const allProbUnchecked = PIPELINE_SECTIONS.every(id => !PIPELINE_PROB_FILTER[id]);
   const noticeEl = document.getElementById('rev2-pipeline-notice');
-  if (!forecastData) {
+  if (allProbUnchecked) {
+    noticeEl.textContent = '포함할 구간을 하나 이상 선택해주세요';
+    noticeEl.style.display = '';
+  } else if (!forecastData) {
     noticeEl.textContent = '인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다';
     noticeEl.style.display = '';
   } else if (!hasInput) {
@@ -3344,6 +3457,19 @@ function renderSalesChart1(scope, series, forecastData) {
   } else {
     excludedEl.textContent = '※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.';
   }
+
+  document.getElementById('rev2-pipeline-source-footnote').textContent = buildPipelineSourceFootnote();
+  document.getElementById('rev2-remainder-footnote').style.display = PIPELINE_PROB_FILTER['100'] ? '' : 'none';
+
+  const unassignedFootnoteEl = document.getElementById('rev2-unassigned-footnote');
+  const unassignedList = (forecastData && forecastData.unassignedRows) || [];
+  if (scope === '팀1' && INCLUDE_UNASSIGNED && unassignedList.length > 0) {
+    const totalMillion = unassignedList.reduce((s, u) => s + u.amountMillion, 0);
+    unassignedFootnoteEl.textContent = `※ 소속이 팀 단위까지 입력되지 않은 ${unassignedList.length}건(${millionToEok(totalMillion).toFixed(1)}억)이 1팀 집계에 포함되어 있습니다.`;
+    unassignedFootnoteEl.style.display = '';
+  } else {
+    unassignedFootnoteEl.style.display = 'none';
+  }
 }
 
 // [보조 차트] 확도별 파이프라인 구성 (가로 누적 막대) — 입력된 예상금액을 사업의 확도 구간별로 집계
@@ -3351,10 +3477,13 @@ function renderPipelineCompositionChart(scope, forecastData) {
   const notice = document.getElementById('rev2-pipe-notice');
   const area   = document.getElementById('rev2-pipe-chart-area');
 
-  if (!forecastData || forecastData.inputCount === 0) {
-    notice.textContent = !forecastData
-      ? '인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다'
-      : '매출 예상을 입력하면 파이프라인 전망이 표시됩니다';
+  const allProbUnchecked = PIPELINE_SECTIONS.every(id => !PIPELINE_PROB_FILTER[id]);
+  if (allProbUnchecked || !forecastData || forecastData.inputCount === 0) {
+    notice.textContent = allProbUnchecked
+      ? '포함할 구간을 하나 이상 선택해주세요'
+      : (!forecastData
+        ? '인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다'
+        : '매출 예상을 입력하면 파이프라인 전망이 표시됩니다');
     notice.style.display = '';
     area.style.display = 'none';
     return;
@@ -3614,6 +3743,11 @@ function renderSalesTrend() {
   warnEl.innerHTML = '';
   empty.querySelector('p').textContent = SALES_EMPTY_MSG_DEFAULT;
 
+  // 파이프라인/미분류 관련 데이터는 인벤토리 분석 결과만 있으면 계산 가능 — SALES_PARSED 유무와 무관
+  const forecastData = computeForecastSummary(SALES_SCOPE);
+  renderUnassignedControl(forecastData);
+  renderProbFilterUI(forecastData ? forecastData.sectionAmounts : null);
+
   if (!SALES_PARSED) {
     empty.style.display = '';
     content.style.display = 'none';
@@ -3638,7 +3772,6 @@ function renderSalesTrend() {
   content.style.display = '';
 
   const series = buildMonthlySeries(SALES_SCOPE);
-  const forecastData = computeForecastSummary(SALES_SCOPE);
   renderSalesSummary(SALES_SCOPE, series, forecastData);
   renderSalesChart1(SALES_SCOPE, series, forecastData);
   renderPipelineCompositionChart(SALES_SCOPE, forecastData);
@@ -3651,6 +3784,103 @@ function setSalesScope(scope) {
   document.getElementById('rev2-scope-team1').classList.toggle('active', scope === '팀1');
   renderSalesTrend();
   saveSalesTrendData();
+}
+
+// ─── 매출 추이: 파이프라인 포함 구간 체크박스 ──────────────────────────────────
+
+function renderProbFilterUI(sectionAmounts) {
+  const el = document.getElementById('rev2-prob-filter-row');
+  if (!el) return;
+  el.innerHTML = PIPELINE_SECTIONS.map(id => {
+    const amt = sectionAmounts ? (sectionAmounts[id] || 0) : 0;
+    const checked = PIPELINE_PROB_FILTER[id] ? 'checked' : '';
+    return `<label class="rev2-prob-chip" style="--chip-color:${PIPELINE_COLORS[id]}">
+      <input type="checkbox" ${checked} onchange="togglePipelineProbFilter('${id}', this.checked)">
+      <span>${PIPELINE_LABELS[id]}</span>
+      <span class="rev2-prob-chip-amt">(${millionToEok(amt).toFixed(1)}억)</span>
+    </label>`;
+  }).join('');
+}
+
+function togglePipelineProbFilter(id, checked) {
+  PIPELINE_PROB_FILTER[id] = checked;
+  savePipelineProbFilter();
+  renderSalesTrend();
+}
+
+async function savePipelineProbFilter() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set('pipeline_prob_filter', PIPELINE_PROB_FILTER); }
+  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+
+async function restorePipelineProbFilter() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get('pipeline_prob_filter');
+    if (saved && typeof saved === 'object') {
+      PIPELINE_SECTIONS.forEach(id => { if (typeof saved[id] === 'boolean') PIPELINE_PROB_FILTER[id] = saved[id]; });
+    }
+  } catch (e) { /* 저장 데이터가 깨졌으면 기본값(전체 포함) 유지 */ }
+}
+
+// ─── 매출 추이: 소속 미분류 건 포함 여부 ────────────────────────────────────────
+
+let INV_UNASSIGNED_LIST_OPEN = false; // 상세보기 펼침 상태
+
+function renderUnassignedControl(forecastData) {
+  const controlEl = document.getElementById('rev2-unassigned-control');
+  if (!controlEl) return;
+  const unassigned = (forecastData && forecastData.unassignedRows) || [];
+  if (SALES_SCOPE !== '팀1' || unassigned.length === 0) {
+    controlEl.style.display = 'none';
+    return;
+  }
+  controlEl.style.display = '';
+  const totalMillion = unassigned.reduce((s, u) => s + u.amountMillion, 0);
+  document.getElementById('rev2-unassigned-amt').textContent = `(${unassigned.length}건, ${millionToEok(totalMillion).toFixed(1)}억)`;
+  document.getElementById('rev2-unassigned-checkbox-input').checked = INCLUDE_UNASSIGNED;
+
+  const listEl = document.getElementById('rev2-unassigned-list');
+  listEl.innerHTML = unassigned.map(u => `
+    <div class="rev2-unassigned-row">
+      <span class="code">${escHtml(u.code)}</span>
+      <span class="name" title="${escHtml(u.name)}">${escHtml(u.name)}</span>
+      <span class="sales">${escHtml(u.sales)}</span>
+      <span class="affil" title="${escHtml(u.affiliation)}">${u.affiliation ? escHtml(u.affiliation) : '<span class="text-sub">(빈값)</span>'}</span>
+      <span class="amt">${fmtAmt(u.amountMillion)}</span>
+    </div>`).join('');
+  listEl.style.display = INV_UNASSIGNED_LIST_OPEN ? '' : 'none';
+  document.getElementById('rev2-unassigned-toggle').textContent = INV_UNASSIGNED_LIST_OPEN ? '[접기]' : '[상세보기]';
+}
+
+function toggleUnassignedDetail(e) {
+  e.preventDefault();
+  INV_UNASSIGNED_LIST_OPEN = !INV_UNASSIGNED_LIST_OPEN;
+  const listEl = document.getElementById('rev2-unassigned-list');
+  if (listEl) listEl.style.display = INV_UNASSIGNED_LIST_OPEN ? '' : 'none';
+  const toggleEl = document.getElementById('rev2-unassigned-toggle');
+  if (toggleEl) toggleEl.textContent = INV_UNASSIGNED_LIST_OPEN ? '[접기]' : '[상세보기]';
+}
+
+function toggleIncludeUnassigned(checked) {
+  INCLUDE_UNASSIGNED = checked;
+  saveIncludeUnassigned();
+  renderSalesTrend();
+}
+
+async function saveIncludeUnassigned() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set('include_unassigned', INCLUDE_UNASSIGNED); }
+  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+
+async function restoreIncludeUnassigned() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get('include_unassigned');
+    if (typeof saved === 'boolean') INCLUDE_UNASSIGNED = saved;
+  } catch (e) { /* 저장 데이터가 깨졌으면 기본값(포함) 유지 */ }
 }
 
 function processSalesFile(file) {

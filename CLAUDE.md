@@ -538,6 +538,41 @@
 
 ---
 
+### 2026-08-06 — 파이프라인 확도 구간 선택 및 소속 미분류 건 포함 옵션 추가 (18차 작업)
+
+#### 목표
+매출 추이 탭에 두 가지 독립적인 필터를 추가: ① 파이프라인 계산에 포함할 확도 구간(100%/90%/75%/50%(F))을 체크박스로 선택, ② 1팀 판별 시 소속에 팀 정보가 없는 "미분류" 건을 포함할지 선택. 두 설정 모두 즉시 재계산 + IndexedDB 저장.
+
+#### A. 파이프라인 확도 구간 선택
+- `PIPELINE_PROB_FILTER = {100,90,75,50f: true}` 전역 상태. `getPipelineCandidateRows(scope)`는 이 필터와 무관하게 팀 스코프만으로 전체 후보(`cand.rows`)를 반환하도록 유지하고, `computeForecastSummary(scope)`에서 `sectionAmounts`(필터 무관 구간별 전체 금액 — 체크박스 라벨용)를 먼저 계산한 뒤 `filteredRows = cand.rows.filter(r => PIPELINE_PROB_FILTER[r.section])`로 걸러 이후 모든 집계(월별 합계, 확도별 합계, 매출 예상 입력 목록의 `candidates`)에 사용 — 체크박스 라벨 금액은 필터와 무관하게 항상 전체 금액을 보여주고, 실제 반영 수치만 필터링되는 구조.
+- 체크박스는 `renderProbFilterUI(sectionAmounts)`가 매 렌더링마다 다시 그림, `input[type=checkbox]`에 `accent-color: var(--chip-color)`로 확도별 색상(100%=#2a78d6, 90%=#1baf7a, 75%=#eda100, 50%(F)=#eb6834) 적용.
+- 4개 모두 해제 시 `renderSalesChart1`/`renderPipelineCompositionChart` 둘 다 "포함할 구간을 하나 이상 선택해주세요" 안내로 전환(기존 "매출 예상을 입력하면..." 안내보다 우선순위 높음).
+- 범례: `PROB_SHORT_LABELS`(100%잔여/90%/75%/50%F)를 선택된 구간만 `·`로 이어 붙여 "파이프라인 XX.X억 (90%·75%·50%F, 점선)" 형식으로 동적 생성.
+- 주석: `buildPipelineSourceFootnote()`가 100% 포함 여부에 따라 "100% 구간의 미청구 잔여분과 90%·75%·50%(F) 구간의 수주금액을" / "90%·75%·50%(F) 구간의 수주금액을" 등으로 문구를 조합. 기존 "100% 구간은... 미청구 잔여분 기준" 각주는 100%가 체크된 경우에만 표시.
+- 저장 키 `pipeline_prob_filter`(객체 그대로 저장).
+
+#### B. 소속 미분류 건 포함 여부
+- `classifyAffiliation(raw)` 신규 — 소속 문자열을 `'team1' | 'team2' | 'unassigned'`로 분류(공백 제거 후 "공공영업1팀"/"공공영업2팀" 포함 여부, 둘 다 없거나 빈 값이면 미분류). 17차 작업의 `isTeam1Affiliation`(boolean)과는 별개로 미분류를 구분해야 해서 새로 추가.
+- **소속 컬럼 자체가 없는 파일(구조적 실패, 이름 폴백 대상)과 "컬럼은 있지만 이 행의 값에 팀 정보가 없음"(미분류)을 명확히 구분**하기 위해 `parseInventorySheet`가 각 행에 `__hasAffilCol`(그 파일에서 소속 컬럼을 찾았는지) 플래그를 추가로 저장. `getPipelineCandidateRows`/`aggregateTeam1ByMonth`/`computeTeam1ScopeData` 모두 `__hasAffilCol`이 false일 때만 이름 폴백을 쓰고, true인데 `classifyAffiliation`이 'unassigned'를 반환하면 `INCLUDE_UNASSIGNED` 전역 플래그(기본 true)에 따라 포함 여부를 결정.
+- `getPipelineCandidateRows`는 100%/90%/75%/50%(F) 4개 구간을 스캔하며 미분류로 판정된 행을 `unassignedRows`(코드/이름/담당자/소속원본값/구간/금액)에 수집 — `INCLUDE_UNASSIGNED` 상태와 무관하게 항상 전체 수집(현재 제외돼 있어도 상세보기에서 확인 가능하도록). `buildInventoryAffiliationMap()`도 `{affil, hasCol}` 형태로 확장해 매출 실적 쪽 판정에서 동일한 구분을 재사용.
+- 체크박스는 1팀 스코프 + 미분류 건이 1건 이상일 때만 표시(`renderUnassignedControl`), "(N건, XX억)" 병기, `[상세보기]` 클릭 시 프로젝트코드/프로젝트명/영업담당자/소속 원본값/금액 표를 펼침(접힘 상태는 재렌더링에도 유지).
+- 체크 변경 시 `renderSalesTrend()` 전체 재실행 — 누적 실적/파이프라인/요약카드/매출 예상 입력 목록이 한 번에 갱신(17차 작업에서 이미 확보된 구조 재사용).
+- 차트 아래 각주: 미분류 건이 포함된 상태(스코프=팀1 & INCLUDE_UNASSIGNED=true & 미분류 1건 이상)일 때만 "※ 소속이 팀 단위까지 입력되지 않은 N건(XX억)이 1팀 집계에 포함되어 있습니다." 표시.
+- 저장 키 `include_unassigned`(boolean).
+
+#### 공통
+- 두 설정 모두 `renderSalesTrend()` 최상단에서 `computeForecastSummary(SALES_SCOPE)`를 한 번만 호출해 `forecastData`를 구하고, 이를 확도 체크박스·미분류 체크박스·요약카드·차트·매출 예상 목록이 전부 공유하도록 리팩터링(기존에는 성공 경로에서만 계산했음 — 이제 SALES_PARSED가 없어도(=매출 실적 파일 미업로드) 인벤토리 데이터만 있으면 두 체크박스 영역이 정상 동작).
+- 진단 로그: `parseInventorySheet`에 1팀/2팀/미분류 건수, `getPipelineCandidateRows`에 미분류 건수+코드 목록, `computeForecastSummary`에 확도 구간별 금액을 각각 `console.log`로 추가(기존 소속 고유 목록 로그는 17차 작업에서 이미 존재).
+
+#### 검증
+- 100%(수주 1000백만, 잔여 전액)/90%(500백만)/75%(200백만)/50%(F) 2건(팀1 100백만 + 미분류 50백만) + 2팀 1건(80백만, 항상 제외)으로 합성 픽스처를 구성해 체크박스 라벨이 정확히 10.0/5.0/2.0/1.5억으로 표시되는지, 미분류 건이 기본 포함되어 1.5억에 반영되는지 확인.
+- 100% 체크 해제 → "미입력 N건(XX억)" 금액이 정확히 10억만큼 줄어들고, "100% 구간은..." 각주가 숨겨지고, 범례/주석 문구에서 100% 관련 표현이 사라지는지 확인. 4개 모두 해제 → 메인 차트·보조 차트 둘 다 "포함할 구간을 하나 이상 선택해주세요"로 전환되는지 확인.
+- 미분류 건 [상세보기] 클릭 시 프로젝트코드/프로젝트명/영업담당자/소속 원본값("CEO > 영업부문 > OKC영업본부")/금액이 정확히 표시되는지 확인. 체크 해제 시 50%(F) 구간 라벨 금액이 1.5억 → 1.0억으로 줄고(확도 필터와 무관하게 스코프 필터만 반영됨을 증명), 차트 아래 미분류 각주가 사라지는지 확인.
+- 콘솔 로그로 "인벤토리 — 1팀 분류(후보) 건수", "소속 미분류 건수: 1 / 프로젝트코드: [OP-PF-UNASSIGNED]", "확도 구간별 금액(백만)" 등이 스펙대로 출력되는지 확인.
+- 두 설정을 각각 다르게 바꾼 뒤(100% 해제 + 미분류 포함 해제) 페이지를 완전히 새로고침 — `pipeline_prob_filter`/`include_unassigned` idb 값과 실제 체크박스 상태가 독립적으로 정확히 복원되는지 확인. 본부 스코프 전환 시 미분류 체크박스가 숨겨지는 회귀 없음 확인. 콘솔 에러 없음.
+
+---
+
 ## 환경 정보
 - OS: Windows 10
 - Node.js: v24.16.0
