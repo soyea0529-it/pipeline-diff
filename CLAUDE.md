@@ -505,6 +505,39 @@
 
 ---
 
+### 2026-08-06 — 1팀 판별을 소속 기준으로 변경, 인원 체크박스 제거 (17차 작업)
+
+#### 목표
+16차 작업에서 추가한 "1팀 인원 선택 체크박스"를 완전히 제거하고, 1팀 판별 방식을 이름 하드코딩(`['조영오','양소예','정인수']`)에서 소속 컬럼("...클라우드공공영업1팀" 형태) 기준으로 전환. 인사이동·동명이인에 취약한 이름 매칭을 없애는 것이 목적.
+
+#### 1. 인원 체크박스 기능 전체 제거
+- HTML: `#rev2-team1-members`(체크박스 영역) 및 두 곳의 달성률 왜곡 경고 블록(`#rev2-team1-distort-summary`/`#rev2-team1-distort-chart`) 삭제.
+- JS: `TEAM1_BASE_MEMBERS`/`TEAM1_EXTRA_MEMBERS`/`TEAM1_SELECTED_EXTRAS`/`getTeam1ActiveMembers`/`renderTeam1MembersUI`/`toggleTeam1Extra`/`saveTeam1Members`/`restoreTeam1Members` 전부 삭제. `computeTeam1ScopeData`/`aggregateTeam1ByMonth`는 유지하되 `members` 매개변수를 제거(더 이상 선택 인원 목록을 받지 않음).
+- idb 키 `team1_members` 저장/복원/삭제 로직을 초기화 시퀀스·`clearAllStoredData`·`resetSalesTrend`에서 모두 제거.
+- CSS: `.rev2-team1-members`/`.rev2-team1-checkboxes`/`.rev2-member-chip*`/`.rev2-team1-target-line`/`.rev2-team1-distort-notice`/`.rev2-distort-mark` 전부 삭제.
+
+#### 2. 소속 기반 판별 도입
+- `isTeam1Affiliation(raw)` — 소속 문자열의 공백(전각 포함)을 모두 제거하고 소문자로 정규화한 뒤 "공공영업1팀" 포함 여부로 판정. `normalizeAffiliation`이 정규화를 담당.
+- `TEAM1_FALLBACK_NAMES = ['조영오','양소예','정인수']` — 소속 컬럼/값이 비어 있을 때만 쓰는 폴백 배열로 격하(더 이상 주 판별 수단이 아님). `isTeam1ByNameFallback(name)`으로 분리.
+- **인벤토리 목록**: `parseInventorySheet`에 `findHeaderCol([row2], '소속')` 추가(고정 인덱스 아님), 파싱 결과 각 행에 `'소속'` 필드 저장. `getPipelineCandidateRows(scope)`의 `inScope`가 이제 각 인벤토리 행의 `소속`으로 직접 판정하고, 값이 비어 있을 때만 `영업담당자`로 폴백(이때 `TEAM1_AFFIL_FALLBACK_USED = true` 설정).
+- **매출 목록 시트**: `parseSalesListSheet`에도 `findHeaderCol([row2], '소속')` 추가, 각 행에 `affiliation` 필드 저장. 프로젝트코드로 인벤토리를 매핑해 담당자를 조회하던 방식은 애초에 이 시트에 존재하지 않았음(코드 감사 결과 확인) — 요구사항대로 시트 자체의 소속 값만으로 직접 판정하도록 유지하고, 진단 로그(소속 고유 목록, 1팀 분류 건수)만 추가. REVENUE_FORECAST 병합 자체는 팀 구분 없이 전역으로 동작(기존과 동일) — 파이프라인 후보 필터링은 인벤토리 쪽에서 이미 처리되므로 중복 게이팅 없음.
+- **매출 실적**(`SALES_PARSED.teamRows`, 주간 영업회의자료): 소속 컬럼이 없으므로 `buildInventoryAffiliationMap()`(전 구간 curr 인벤토리에서 프로젝트코드 → 소속 맵 구성)으로 프로젝트코드를 조회해 판정. 맵에 코드가 아예 없으면(매핑 실패) 1팀에서 제외 + 카운트, 코드가 있는데 소속 값만 비어 있으면 이름 폴백, 소속이 있으면 그 값으로 직접 판정. `aggregateTeam1ByMonth`/`computeTeam1ScopeData`(당월 예상액 재집계)에 동일하게 적용.
+- 목표(`SALES_TARGET_2026.팀1`)는 스코프 문자열로만 조회되는 기존 구조 그대로라 이번 변경과 무관하게 항상 고정값 유지(코드 변경 없음).
+- **폴백 UI 안내**: 렌더링마다 `TEAM1_AFFIL_FALLBACK_USED`를 리셋하고, 인벤토리 소속 판정 또는 매출 실적 소속 판정 중 하나라도 이름 폴백을 썼으면 스코프 토글 바로 아래 회색 문구 `#rev2-affil-fallback-notice`("소속 정보를 찾지 못해 담당자명 기준으로 분류되었습니다")를 노출. `updateAffilFallbackNotice()`가 `renderSalesTrend()`의 모든 반환 경로에서 호출되도록 함.
+
+#### 3. 진단 로그
+- 인벤토리/매출 목록 각각 소속 컬럼 탐지 인덱스와 소속 고유값 목록을 `console.log`.
+- 인벤토리 1팀 분류(파이프라인 후보) 건수, 매출 목록 1팀 분류 건수, 매출 실적 1팀 분류/소속 매핑 실패 건수를 각각 `console.log`.
+
+#### 검증
+- 소속값이 "CEO > 영업부문 > OKC영업본부 > 클라우드공공영업1팀"/"...금융공공영업2팀"인 인벤토리 2건을 합성해 검증 — 구 하드코딩 명단에 없는 이름(김신입)이 소속만으로 1팀 후보에 포함되고, 명단에 있어도 소속이 다른 2팀 건은 제외되는지 직접 확인(이름 매칭이 실제로 더 이상 주 판별 수단이 아님을 증명).
+- 소속 컬럼 자체가 없는 인벤토리 파일로 이름 폴백 경로를 검증 — 조영오(구 하드코딩 명단) 건이 정상적으로 폴백 판정되어 후보에 포함되고, 폴백 안내 문구가 표시되는지 확인. 소속이 정상 감지된 스코프에서는 안내가 숨는지 확인.
+- 매출 목록 시트에 자체 소속 컬럼을 넣은 픽스처로 "1팀 분류: 1건/2건 중" 로그가 정확히 찍히는지 확인(인벤토리 매핑 없이 그 값만으로 판정).
+- 주간 영업회의자료 매출 실적 3건(인벤토리 매핑+1팀, 인벤토리 매핑+2팀 제외, 인벤토리에 코드 없음=매핑 실패 제외)으로 검증 — 누적 실적이 1팀 매핑분(3.0억)만 정확히 반영되고, 콘솔에 "1팀 분류: 1건 / 소속 매핑 실패(제외): 1건"이 정확히 출력되는지 확인. 목표(290.6억)는 그대로 유지되는지 확인.
+- 체크박스 UI(`#rev2-team1-members`)가 DOM에서 완전히 사라졌는지, `team1_members` idb 키가 더 이상 저장되지 않는지 직접 확인. 본부 스코프 전환 시 회귀 없는지, 새로고침 후 스코프·집계 결과가 그대로 유지되는지 확인. 콘솔 에러 없음.
+
+---
+
 ## 환경 정보
 - OS: Windows 10
 - Node.js: v24.16.0
