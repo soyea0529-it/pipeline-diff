@@ -675,6 +675,29 @@
 
 ---
 
+### 2026-08-10 — 차트 월 클릭 시 사업 목록 팝업 추가 (23차 작업)
+
+#### 목표
+매출 추이 탭 메인 차트에서 파이프라인 전망(초록 점선) 구간의 월을 클릭하면, 그 달에 매출 예상으로 잡힌 사업 목록을 팝업으로 보여주는 기능 추가. 실적 구간(파란 실선)의 월은 클릭해도 아무 반응이 없어야 함.
+
+#### 구현 내용
+- **클릭 가능 월 판정**: `isPipelineClickableMonth(idx, pipelineStartIdx, pipelineArr)` — `pipelineArr[idx]`가 존재하고 `idx > pipelineStartIdx`일 때만 true. `pipelineStartIdx`(당월 예상 또는 마지막 확정월)와 겹치는 시작점은 실적/당월예상 쪽 데이터라 제외, 그 이후 순수 전망 구간만 클릭 대상으로 인정.
+- **목록 구성**: `buildMonthForecastList(month, forecastData)` — `forecastData.candidates`(확도 구간 체크박스·본부/1팀 스코프가 이미 반영된 파이프라인 후보 목록)를 순회하며, 각 사업의 `REVENUE_FORECAST[code]` 항목 중 `월`이 대상 월과 일치하는 항목들의 금액을 합산해 사업당 한 줄로 집계(같은 사업이 여러 항목으로 나뉘어 같은 달을 가리키는 경우 자동 합산, 다른 달을 가리키는 항목은 각자 해당 월 팝업에서만 표시). 금액 큰 순 정렬.
+- **클릭 처리**: `handleChartMonthClick(idx, pipelineStartIdx, pipelineArr, forecastData)` — 클릭 가능 월이 아니면 무시, 목록이 비어 있으면(해당 월에 매출 예상 데이터 없음) 팝업을 띄우지 않음.
+- **Chart.js 연동**: `renderSalesChart1`의 `options`에 `onClick`(`getElementsAtEventForMode(evt,'index',{intersect:false},true)`로 인덱스 판별 → `handleChartMonthClick` 호출)과 `onHover`(같은 방식으로 인덱스 판별 → `isPipelineClickableMonth` 결과에 따라 `chart.canvas.style.cursor`를 `pointer`/`default`로 전환) 추가.
+- **팝업 UI**: `#rev2-month-popup-overlay`(반투명 검정 `rgba(0,0,0,0.35)` 오버레이, `position:fixed`, flex 중앙 정렬) + `.rev2-month-popup`(최대 900px, 다크테마 카드). 헤더는 "2026년 N월"(16px 굵게) + "N건 · X.X억"(13px 회색) + × 닫기 버튼을 한 줄에 배치(`white-space:nowrap`). 목록 각 줄은 확도 배지(44px 고정폭, `PIPELINE_COLORS`/`PIPELINE_LABELS` 재사용해 100%=파랑/90%=초록/75%=노랑/50%(F)=주황) + 사업명(담당자를 괄호로 붙여 표기, 담당자는 회색) + 우측 정렬 금액("2,100.0백만원", 기존 `fmtAmt` 재사용) 3요소를 가로 배치, `white-space:nowrap` + `text-overflow:ellipsis`로 말줄임 처리(사업명에 `title` 속성으로 전체 텍스트 툴팁). 목록 아래 구분선 + "합계 … XXX.X백만원" 행.
+- **닫기**: × 버튼(`closeMonthForecastPopup`), 오버레이 배경 클릭(`onclick="if(event.target===this) closeMonthForecastPopup()"` — 팝업 내부 클릭은 통과), `document`에 등록한 전역 `keydown` 리스너로 Escape 키 처리(팝업이 열려 있을 때만 반응).
+- 팝업을 열고 닫아도 차트·요약카드 등 다른 화면 상태는 전혀 변경하지 않음(단순 오버레이 표시/숨김).
+
+#### 검증
+- 인벤토리 파이프라인 후보 6건(100%/90%/75%/50%(F) 구간, 그중 소속 미분류 1건·2팀 1건 포함)과 주간 영업회의자료(1~6월 확정 + 7월 당월예상)를 실제로 업로드하고, `REVENUE_FORECAST`에 8월(3건, 그중 한 사업은 항목 2개로 분할)·9월(2건, 그중 한 사업은 10월에도 별도 항목)·10월(1건)·11월(1건)·7월(1건, 실적 구간이라 클릭 차단 검증용) 매출 예상을 직접 입력.
+- 실제 Chart.js `onClick`/`onHover`가 차트 인스턴스에 함수로 등록됐는지 확인한 뒤, `handleChartMonthClick`을 렌더 함수와 동일한 방식으로 재계산한 `pipelineStartIdx`/`pipelineArr`로 직접 호출해 인덱스별 결과를 확인 — 3월(확정 구간)·7월(당월예상 시작점) 클릭 시 팝업이 뜨지 않음, 8월 클릭 시 3건(90%·100%·50%(F) 미분류, 500/400/25백만) 금액 내림차순 정렬 + 합계 925.0백만원("3건 · 9.3억"), 9월 클릭 시 2건(200/50백만, 합계 250.0백만원 — 같은 사업의 10월분과 섞이지 않음), 10월 클릭 시 해당 사업의 10월분만(50.0백만원), 11월 클릭 시 2팀 사업 포함(80.0백만원, 본부 스코프이므로 정상 포함), 12월(데이터 없음) 클릭 시 팝업이 뜨지 않음을 모두 확인 — 각 월의 합계가 `computeForecastSummary('본부').monthlyMillion`과 정확히 일치.
+- ESC 키·오버레이 배경 클릭 시 닫히고, 팝업 내부(목록 영역) 클릭 시 닫히지 않는지 확인. × 버튼 클릭으로도 정상적으로 닫히는지 확인.
+- 90% 확도 구간 체크박스를 해제한 뒤 같은 8월 팝업을 다시 열어 90% 사업이 목록에서 빠지고 합계가 925.0→425.0백만원("2건 · 4.3억")으로 정확히 줄어드는지 확인(확도 필터 반영), 체크박스를 다시 켜서 원상 복구.
+- 전 과정에서 콘솔 에러 없음. `clearAllStoredData()`로 테스트 데이터 정리 후 로컬 서버 종료.
+
+---
+
 ## 환경 정보
 - OS: Windows 10
 - Node.js: v24.16.0

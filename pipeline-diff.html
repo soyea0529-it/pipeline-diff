@@ -431,6 +431,43 @@
   .rev2-h1h2-summary-bar { font-size: 13px; color: var(--text-sub); margin: 4px 0 12px; }
   .rev2-h1-status-badge { font-size: 12px; font-weight: 500; margin-left: 10px; }
 
+  /* ── 매출 예상 사업 목록 팝업 ───────────────────────────────────────── */
+  .rev2-month-popup-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1000;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .rev2-month-popup {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    width: 100%; max-width: 900px; max-height: 80vh; display: flex; flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .rev2-month-popup-header {
+    display: flex; align-items: baseline; gap: 10px; padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .rev2-month-popup-title { font-size: 16px; font-weight: 700; color: var(--text); }
+  .rev2-month-popup-sub { font-size: 13px; color: var(--text-sub); }
+  .rev2-month-popup-close {
+    margin-left: auto; background: none; border: none; color: var(--text-sub);
+    font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px; flex-shrink: 0;
+  }
+  .rev2-month-popup-close:hover { color: var(--text); }
+  .rev2-month-popup-body { overflow-y: auto; padding: 6px 20px 20px; }
+  .rev2-month-popup-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; white-space: nowrap; }
+  .rev2-month-popup-badge {
+    flex-shrink: 0; width: 44px; text-align: center; font-size: 11px; font-weight: 700;
+    border-radius: 4px; padding: 3px 0; color: #fff;
+  }
+  .rev2-month-popup-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text); }
+  .rev2-month-popup-name .rep { color: var(--text-sub); }
+  .rev2-month-popup-amt { flex-shrink: 0; font-size: 13px; color: var(--text); text-align: right; min-width: 120px; }
+  .rev2-month-popup-total {
+    display: flex; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 12px;
+    font-weight: 700; white-space: nowrap; color: var(--text);
+  }
+  .rev2-month-popup-total .label { flex: 1; }
+  .rev2-month-popup-total .amt { flex-shrink: 0; min-width: 120px; text-align: right; }
+
   /* ── 매출 예상 입력 ─────────────────────────────────────────────────── */
   .rev2-forecast-header { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .rev2-unit-hint { font-size: 11px; font-weight: 500; color: var(--text-sub); }
@@ -761,6 +798,17 @@
   </div>
 
 </main>
+
+<div class="rev2-month-popup-overlay" id="rev2-month-popup-overlay" style="display:none" onclick="if(event.target===this) closeMonthForecastPopup()">
+  <div class="rev2-month-popup">
+    <div class="rev2-month-popup-header">
+      <span class="rev2-month-popup-title" id="rev2-month-popup-title"></span>
+      <span class="rev2-month-popup-sub" id="rev2-month-popup-sub"></span>
+      <button type="button" class="rev2-month-popup-close" onclick="closeMonthForecastPopup()">×</button>
+    </div>
+    <div class="rev2-month-popup-body" id="rev2-month-popup-body"></div>
+  </div>
+</div>
 
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -3606,6 +3654,66 @@ const h1h2DividerPlugin = {
   }
 };
 
+// ─── 매출 추이: 차트 월 클릭 → 매출 예상 사업 목록 팝업 ────────────────────────
+// forecastData.candidates는 확도 구간 체크박스/본부·1팀 스코프가 이미 반영된 목록이므로 별도 필터링이 필요 없다.
+
+function buildMonthForecastList(month, forecastData) {
+  if (!forecastData) return [];
+  const monthKey = `2026-${String(month).padStart(2, '0')}`;
+  const list = [];
+  forecastData.candidates.forEach(c => {
+    const entries = (REVENUE_FORECAST[c.code] || []).filter(e => e && e.월 === monthKey && Number(e.금액) > 0);
+    if (!entries.length) return;
+    const amountMillion = entries.reduce((s, e) => s + Number(e.금액), 0);
+    list.push({ code: c.code, name: c.name, sales: c.sales, section: c.section, amountMillion });
+  });
+  list.sort((a, b) => b.amountMillion - a.amountMillion);
+  return list;
+}
+
+// idx는 0-based 월 인덱스. 파이프라인 반영 전망(초록 점선) 구간 중 시작점(실적/당월예상과 겹치는 지점)을 제외한
+// 순수 전망 구간에서만 클릭을 허용한다.
+function isPipelineClickableMonth(idx, pipelineStartIdx, pipelineArr) {
+  return !!pipelineArr && pipelineArr[idx] != null && idx > pipelineStartIdx;
+}
+
+function handleChartMonthClick(idx, pipelineStartIdx, pipelineArr, forecastData) {
+  if (!isPipelineClickableMonth(idx, pipelineStartIdx, pipelineArr)) return;
+  const month = idx + 1;
+  const list = buildMonthForecastList(month, forecastData);
+  if (!list.length) return; // 해당 월에 데이터가 없으면 팝업을 띄우지 않음
+  openMonthForecastPopup(month, list);
+}
+
+function openMonthForecastPopup(month, list) {
+  const totalMillion = list.reduce((s, c) => s + c.amountMillion, 0);
+  document.getElementById('rev2-month-popup-title').textContent = `2026년 ${month}월`;
+  document.getElementById('rev2-month-popup-sub').textContent = `${list.length}건 · ${millionToEok(totalMillion).toFixed(1)}억`;
+  const rowsHtml = list.map(c => `
+    <div class="rev2-month-popup-row">
+      <span class="rev2-month-popup-badge" style="background:${PIPELINE_COLORS[c.section]}">${PIPELINE_LABELS[c.section]}</span>
+      <span class="rev2-month-popup-name" title="${escHtml(c.name)}">${escHtml(c.name)}<span class="rep">(${escHtml(c.sales)})</span></span>
+      <span class="rev2-month-popup-amt">${fmtAmt(c.amountMillion)}백만원</span>
+    </div>`).join('');
+  document.getElementById('rev2-month-popup-body').innerHTML = rowsHtml + `
+    <div class="rev2-month-popup-total">
+      <span class="label">합계</span>
+      <span class="amt">${fmtAmt(totalMillion)}백만원</span>
+    </div>`;
+  document.getElementById('rev2-month-popup-overlay').style.display = 'flex';
+}
+
+function closeMonthForecastPopup() {
+  const overlay = document.getElementById('rev2-month-popup-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const overlay = document.getElementById('rev2-month-popup-overlay');
+  if (overlay && overlay.style.display !== 'none') closeMonthForecastPopup();
+});
+
 // [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
 function renderSalesChart1(scope, series, forecastData) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
@@ -3674,6 +3782,16 @@ function renderSalesChart1(scope, series, forecastData) {
       layout: { padding: { top: 18 } },
       interaction: { mode: 'index', intersect: false },
       scales: salesChartCommonScales,
+      onClick: (evt, elements, chart) => {
+        const points = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+        if (!points.length) return;
+        handleChartMonthClick(points[0].index, pipelineStartIdx, pipelineArr, forecastData);
+      },
+      onHover: (evt, elements, chart) => {
+        const points = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, false);
+        const idx = points.length ? points[0].index : -1;
+        chart.canvas.style.cursor = isPipelineClickableMonth(idx, pipelineStartIdx, pipelineArr) ? 'pointer' : 'default';
+      },
       plugins: {
         legend: { display: false },
         todayLine: todayMonthIdx != null ? { monthIndex: todayMonthIdx, label: `오늘 (${todayMonthIdx + 1}월)` } : null,
