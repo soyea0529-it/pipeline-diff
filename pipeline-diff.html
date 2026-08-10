@@ -426,12 +426,10 @@
   .rev2-unassigned-row .affil { flex-shrink: 0; width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-sub); }
   .rev2-unassigned-row .amt  { flex-shrink: 0; color: var(--text-sub); width: 60px; text-align: right; }
 
-  .rev2-confirmed-fallback-notice { font-size: 12px; color: var(--del); background: #3d1f0f; border-radius: 6px; padding: 8px 12px; margin-top: 8px; line-height: 1.5; }
-  .rev2-confirmed-files-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .rev2-confirmed-file-chip { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-sub); background: var(--surface2); border-radius: 5px; padding: 4px 8px; }
-  .rev2-confirmed-file-chip button { background: none; border: none; color: var(--text-sub); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
-  .rev2-confirmed-file-chip button:hover { color: var(--del); }
-  .rev2-confirmed-summary-bar { font-size: 12px; color: var(--text-sub); margin-top: 8px; }
+  .rev2-fallback-notice { font-size: 12px; color: var(--del); background: #3d1f0f; border-radius: 6px; padding: 8px 12px; margin-top: 8px; line-height: 1.5; }
+  .rev2-ostaek-note { font-size: 11px; color: var(--text-sub); margin-left: 6px; }
+  .rev2-h1h2-summary-bar { font-size: 13px; color: var(--text-sub); margin: 4px 0 12px; }
+  .rev2-h1-status-badge { font-size: 12px; font-weight: 500; margin-left: 10px; }
 
   /* ── 매출 예상 입력 ─────────────────────────────────────────────────── */
   .rev2-forecast-header { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
@@ -611,6 +609,16 @@
         <button class="rev2-scope-btn active" id="rev2-scope-hq"    onclick="setSalesScope('본부')">영업본부</button>
         <button class="rev2-scope-btn"        id="rev2-scope-team1" onclick="setSalesScope('팀1')">공공영업1팀</button>
       </div>
+
+      <div class="rev2-unassigned-control" id="rev2-ostaek-control" style="display:none">
+        <label class="rev2-unassigned-checkbox">
+          <input type="checkbox" id="rev2-ostaek-checkbox-input" checked onchange="toggleIncludeOstaek(this.checked)">
+          <span>오수택 포함</span>
+          <span class="rev2-unassigned-amt" id="rev2-ostaek-amt"></span>
+        </label>
+        <span class="rev2-ostaek-note">※ 체크박스는 하반기(7~12월) 실적에만 적용됩니다.</span>
+      </div>
+
       <div class="rev2-affil-fallback-notice" id="rev2-affil-fallback-notice" style="display:none">소속 정보를 찾지 못해 담당자명 기준으로 분류되었습니다</div>
       <div class="rev2-unassigned-control" id="rev2-unassigned-control" style="display:none">
         <label class="rev2-unassigned-checkbox">
@@ -621,8 +629,7 @@
         <a href="#" class="rev2-detail-link" id="rev2-unassigned-toggle" onclick="toggleUnassignedDetail(event)">[상세보기]</a>
         <div class="rev2-unassigned-list" id="rev2-unassigned-list" style="display:none"></div>
       </div>
-      <div class="rev2-confirmed-fallback-notice" id="rev2-confirmed-fallback-notice" style="display:none">확정 실적 파일이 없어 담당자명 기준으로 집계했습니다.<br>오수택·윤호영·담당자 미기재 건이 누락될 수 있습니다.</div>
-      <div class="rev2-confirmed-fallback-notice" id="rev2-h1-fallback-notice" style="display:none">상반기 확정 실적 파일이 없어 담당자명 기준으로 집계했습니다.<br>일부 건이 누락될 수 있습니다.</div>
+      <div class="rev2-fallback-notice" id="rev2-h1-fallback-notice" style="display:none">상반기 확정 실적 파일을 업로드해주세요.<br>현재는 담당자명 기준으로 집계됩니다.</div>
 
       <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
         <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
@@ -636,24 +643,6 @@
         <span class="status-msg" id="rev2-status"></span>
       </div>
 
-      <div class="upload-card" id="rev2-confirmed-upload-card" style="max-width:560px">
-        <input type="file" accept=".xlsx,.xls" id="rev2-confirmed-upload-input" multiple style="display:none">
-        <div class="upload-icon">📁</div>
-        <div class="upload-label">분기별 확정 매출실적 (선택)</div>
-        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택 (여러 개 가능)</div>
-      </div>
-      <div class="rev2-confirmed-files-list" id="rev2-confirmed-files-list"></div>
-      <div class="rev2-confirmed-summary-bar" id="rev2-confirmed-summary-bar"></div>
-
-      <div class="upload-card" id="rev2-h1-upload-card" style="max-width:560px">
-        <input type="file" accept=".xlsx,.xls" id="rev2-h1-upload-input" style="display:none">
-        <div class="upload-icon">📗</div>
-        <div class="upload-label">상반기 확정 실적 (팀 분류 포함)</div>
-        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
-        <div class="upload-filename" id="rev2-h1-upload-name"></div>
-      </div>
-      <div class="rev2-confirmed-summary-bar" id="rev2-h1-summary-bar"></div>
-
       <div id="rev2-warning"></div>
 
       <div class="empty-state" id="rev2-empty">
@@ -662,12 +651,13 @@
       </div>
 
       <div id="rev2-content" style="display:none">
-        <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
-
         <div class="chart-card" id="rev2-prob-filter-card">
           <div class="chart-card-title">파이프라인 포함 구간</div>
           <div class="rev2-prob-filter-row" id="rev2-prob-filter-row"></div>
         </div>
+
+        <div class="rev2-h1h2-summary-bar" id="rev2-h1h2-summary-bar" style="display:none"></div>
+        <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
         <div class="chart-card">
           <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
@@ -748,6 +738,25 @@
         </div>
       </div>
 
+      <div class="chart-card" id="rev2-h1-card">
+        <div class="rev2-forecast-header" onclick="toggleH1Section()">
+          <span class="chart-card-title" style="margin-bottom:0">상반기 확정 실적 (1회 등록) <span class="rev2-h1-status-badge" id="rev2-h1-status-badge"></span></span>
+          <span class="rev2-forecast-toggle-icon" id="rev2-h1-toggle-icon">▸</span>
+        </div>
+        <div id="rev2-h1-body" style="display:none">
+          <div class="upload-card" id="rev2-h1-upload-card" style="max-width:560px">
+            <input type="file" accept=".xlsx,.xls" id="rev2-h1-upload-input" style="display:none">
+            <div class="upload-icon">📗</div>
+            <div class="upload-label">상반기 확정 실적 업로드</div>
+            <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
+            <div class="upload-filename" id="rev2-h1-upload-name"></div>
+          </div>
+          <div class="btn-row" id="rev2-h1-actions" style="display:none;margin-top:8px">
+            <button class="btn btn-secondary" onclick="removeH1RevenueFile()">삭제</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -796,13 +805,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
   setupSalesUpload();
-  setupConfirmedRevenueUpload();
   setupH1RevenueUpload();
   await loadRevenueForecast();
   await restorePipelineProbFilter();
   await restoreIncludeUnassigned();
-  await restoreConfirmedRevenue();
-  renderConfirmedRevenueUI();
+  await restoreIncludeOstaek();
   await restoreH1Revenue();
   renderH1RevenueUI();
   await restoreSalesCompareData();
@@ -1496,10 +1503,10 @@ async function clearAllStoredData() {
   REVENUE_FORECAST = {};
   PIPELINE_PROB_FILTER = { '100': true, '90': true, '75': true, '50f': true };
   INCLUDE_UNASSIGNED = true;
-  CONFIRMED_REVENUE_FILES = {};
-  renderConfirmedRevenueUI();
+  INCLUDE_OSTAEK = true;
   CONFIRMED_H1_REVENUE_ROWS = [];
   CONFIRMED_H1_REVENUE_FILENAME = '';
+  CONFIRMED_H1_REVENUE_REGISTERED_AT = null;
   renderH1RevenueUI();
   if (typeof renderForecastSection === 'function') renderForecastSection();
   try {
@@ -1508,7 +1515,7 @@ async function clearAllStoredData() {
       await idbKeyval.del(LAST_TAB_STORAGE_KEY);
       await idbKeyval.del('pipeline_prob_filter');
       await idbKeyval.del('include_unassigned');
-      await idbKeyval.del(CONFIRMED_REVENUE_STORAGE_KEY);
+      await idbKeyval.del('include_ostaek');
       await idbKeyval.del(CONFIRMED_H1_REVENUE_STORAGE_KEY);
     }
   } catch (e) { /* 무시 */ }
@@ -2786,26 +2793,15 @@ function classifyAffiliation(raw) {
   if (norm.includes('공공영업2팀')) return 'team2';
   return 'unassigned';
 }
-// 1팀 스코프에서 소속 미분류 건을 포함할지 여부 (기본 포함)
+// 1팀 스코프에서 소속 미분류 건을 포함할지 여부 (기본 포함) — 인벤토리 기반 파이프라인 후보(getPipelineCandidateRows)에만 사용
 let INCLUDE_UNASSIGNED = true;
-// 소속 원본값으로 1팀 스코프 여부를 직접 판정(미분류는 INCLUDE_UNASSIGNED를 따름) — 인벤토리 매핑이 필요 없는 데이터 소스용
-function isRowInTeam1Scope(affiliationRaw) {
-  const cls = classifyAffiliation(affiliationRaw);
-  if (cls === 'team1') return true;
-  if (cls === 'unassigned') return INCLUDE_UNASSIGNED;
-  return false;
-}
-// INV_FILES.curr 전 구간에서 프로젝트코드 → {소속값, 소속컬럼탐지여부} 맵을 구성 (매출 실적의 소속 없는 행을 판정할 때 사용)
-function buildInventoryAffiliationMap() {
-  const map = {};
-  INV_SECTIONS.forEach(s => {
-    (INV_FILES.curr[s.id] && INV_FILES.curr[s.id].rows || []).forEach(r => {
-      const code = String(r['프로젝트코드'] || '').trim();
-      if (code && !(code in map)) map[code] = { affil: r['소속'] || '', hasCol: !!r['__hasAffilCol'] };
-    });
-  });
-  return map;
-}
+
+// ─── 매출 추이: 하반기(7~12월) 매출 실적 — 주간 회의자료에는 팀 구분 컬럼이 없어 이름으로 판정 ─────
+// 기본 3명은 항상 포함, 오수택은 체크박스로 선택 포함(하반기 실적에만 적용 — 상반기는 팀실적 컬럼 기준이라 무관).
+const TEAM1_H2_BASE_NAMES = ['조영오', '양소예', '정인수'];
+let INCLUDE_OSTAEK = true;
+function getTeam1H2Names() { return INCLUDE_OSTAEK ? TEAM1_H2_BASE_NAMES.concat(['오수택']) : TEAM1_H2_BASE_NAMES.slice(); }
+function isTeam1H2ByName(rep) { return getTeam1H2Names().includes(String(rep || '').replace(/\s/g, '')); }
 
 const SALES_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 
@@ -2826,74 +2822,19 @@ function findRevenueSheetName(wb) {
   return hit || wb.SheetNames[1] || wb.SheetNames[0];
 }
 
-// ─── 매출 추이: 분기별 확정 매출실적 파일 (소속 컬럼 포함, 인벤토리 매핑 불필요) ─────
-// 시트 "매출 실적" — row[2] 헤더, row[3] 금액 항목 헤더, 데이터는 row[4]부터. 금액 단위는 백만원.
-function parseConfirmedRevenueSheet(wb, fileName) {
-  console.log('[확정 실적 파싱]', fileName, '시트 목록:', wb.SheetNames);
-  const targetName = wb.SheetNames.find(n => n.includes('매출') && n.includes('실적'));
-  console.log('[확정 실적 파싱]', fileName, '"매출 실적" 시트 찾음:', !!targetName, targetName || '(없음)');
-  if (!targetName) return [];
-  const raw = XLSX.utils.sheet_to_json(wb.Sheets[targetName], { header: 1, defval: '' });
-  if (!raw || raw.length < 5) { console.log('[확정 실적 파싱]', fileName, '데이터가 없습니다.'); return []; }
-
-  const row2 = raw[2] || [];
-  const row3 = raw[3] || [];
-
-  let colCode        = findHeaderCol([row2], '프로젝트코드');
-  const colName      = findHeaderCol([row2], '프로젝트명');
-  const colCust      = findHeaderCol([row2], /고객사/);
-  const colAffil     = findHeaderCol([row2], '소속');
-  const colStatus    = findHeaderCol([row2], /수주.?확도/);
-  const colSeq       = findHeaderCol([row2], '매출순번');
-  const colBillDate  = findHeaderCol([row2], '매출청구일');
-  const colActualDate = findHeaderCol([row2], '매출실적일'); // 월 구분 기준(매출청구일이 아님)
-  const colProduct   = findHeaderCol([row3], '제품');
-  const colGoods     = findHeaderCol([row3], '상품');
-  const colService   = findHeaderCol([row3], '용역');
-  const colMaint     = findHeaderCol([row3], '유지보수');
-  let colTotal       = findHeaderCol([row3], '합계');
-  if (colTotal < 0) colTotal = 13; // 폴백: 스펙상 고정 위치
-
-  if (colCode < 0) colCode = scanOpCodeColumn(raw, 4);
-
-  console.log('[확정 실적 파싱]', fileName, '컬럼 인덱스 →', {
-    프로젝트코드: colCode, 프로젝트명: colName, 고객사명: colCust, 소속: colAffil, 수주확도: colStatus,
-    매출순번: colSeq, 매출청구일: colBillDate, 매출실적일: colActualDate,
-    제품: colProduct, 상품: colGoods, 용역: colService, 유지보수: colMaint, 합계: colTotal,
-  });
-  if (colCode < 0) { console.warn('[확정 실적 파싱]', fileName, '프로젝트코드 컬럼을 찾지 못했습니다.'); return []; }
-
-  const dataRows = raw.slice(4).filter(r => r[colCode] && /^OP-/i.test(String(r[colCode]).trim()));
-  console.log('[확정 실적 파싱]', fileName, '읽은 행 수:', dataRows.length);
-
-  if (colAffil >= 0) {
-    const uniqueAffils = [...new Set(dataRows.map(r => String(r[colAffil] || '').trim()).filter(Boolean))];
-    console.log('[1팀 판별] 확정 실적 소속 고유 목록:', fileName, uniqueAffils);
-  } else {
-    console.warn('[1팀 판별] 확정 실적 파일에서 소속 컬럼을 찾지 못했습니다:', fileName);
-  }
-
-  const num = (r, col) => col >= 0 ? (Number(r[col]) || 0) : 0;
-  return dataRows.map(r => ({
-    code: String(r[colCode]).trim(),
-    name: colName >= 0 ? String(r[colName] || '').trim() : '',
-    cust: colCust >= 0 ? String(r[colCust] || '').trim() : '',
-    affiliation: colAffil >= 0 ? String(r[colAffil] || '').trim() : '',
-    status: colStatus >= 0 ? String(r[colStatus] || '').trim() : '',
-    seq: colSeq >= 0 ? String(r[colSeq] ?? '').trim() : '',
-    billDate: colBillDate >= 0 ? r[colBillDate] : '',
-    actualDate: colActualDate >= 0 ? r[colActualDate] : '',
-    product: num(r, colProduct), goods: num(r, colGoods), service: num(r, colService), maint: num(r, colMaint),
-    amountMillion: colTotal >= 0 ? (Number(r[colTotal]) || 0) : 0,
-  }));
-}
-
 // ─── 매출 추이: 상반기 확정 실적 (팀실적 컬럼 기준, 인벤토리/소속 매핑 불필요) ─────
 // 단일 파일(재업로드 시 덮어쓰기). 헤더는 row[2] 한 줄, 데이터는 row[3]부터. 금액 단위는 원.
 let CONFIRMED_H1_REVENUE_ROWS = [];
 let CONFIRMED_H1_REVENUE_FILENAME = '';
+let CONFIRMED_H1_REVENUE_REGISTERED_AT = null; // 업로드(등록) 시각(ms) — 상태 배지에 날짜로 표시
 
 function hasH1Revenue() { return CONFIRMED_H1_REVENUE_ROWS.length > 0; }
+
+function formatDateYMD(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 function parseH1RevenueSheet(wb, fileName) {
   console.log('[상반기 실적 파싱]', fileName, '시트 목록:', wb.SheetNames);
@@ -3100,74 +3041,22 @@ function excelDateToMonth(v) {
   return null;
 }
 
-// 매출 실적 상세행에는 소속 컬럼이 없으므로 프로젝트코드로 인벤토리의 소속을 찾아 판정한다.
-// 인벤토리에서 코드 자체를 찾지 못하면(매핑 실패) 1팀에서 제외한다.
-// ─── 매출 추이: 분기별 확정 매출실적 (소속 컬럼 포함, 인벤토리 매핑 불필요) ─────────
-// 파일명별로 저장(재업로드 시 해당 파일만 교체), 집계 시 매출실적일 기준으로 월/분기를 산정.
-let CONFIRMED_REVENUE_FILES = {}; // { [fileName]: row[] }
-
-function hasConfirmedRevenue() { return Object.keys(CONFIRMED_REVENUE_FILES).length > 0; }
-
-// 확정 실적 파일 전체를 월별로 집계(매출실적일 기준). 금액은 백만원 -> 원으로 변환해 기존 파이프라인과 단위를 통일.
-function aggregateConfirmedRevenueByMonth() {
+// 주간 회의자료 매출 상세행(1~12월 전체, 하반기 7~12월에 실질적으로 사용)을 이름 기준으로 월별 집계.
+// 상반기(1~6월)는 computeTeam1ScopeData에서 상반기 확정 실적 파일 값으로 덮어써진다.
+function aggregateTeam1ByMonth(rows) {
   const months = {};
   let team1Count = 0, excludedCount = 0;
-  Object.values(CONFIRMED_REVENUE_FILES).flat().forEach(r => {
-    if (!isRowInTeam1Scope(r.affiliation)) { excludedCount++; return; }
-    team1Count++;
-    const m = excelDateToMonth(r.actualDate);
-    if (!m) return;
-    if (!months[m]) months[m] = { product: 0, goods: 0, service: 0, maint: 0, total: 0 };
-    months[m].product += r.product * 1000000; months[m].goods += r.goods * 1000000;
-    months[m].service += r.service * 1000000; months[m].maint += r.maint * 1000000;
-    months[m].total += r.amountMillion * 1000000;
-  });
-  console.log('[1팀 판별] 확정 매출실적 — 1팀 분류:', team1Count, '건 / 제외:', excludedCount, '건');
-  return months;
-}
-
-// 분기별 건수/금액 요약("확정 실적: Q1 61.5억(30건) · Q2 39.1억(41건) · 합계 100.6억" 표시용)
-function buildConfirmedRevenueQuarterSummary() {
-  const byQuarter = {};
-  SALES_QUARTERS.forEach(q => { byQuarter[q] = { count: 0, millionSum: 0 }; });
-  Object.values(CONFIRMED_REVENUE_FILES).flat().forEach(r => {
-    if (!isRowInTeam1Scope(r.affiliation)) return;
-    const m = excelDateToMonth(r.actualDate);
-    if (!m) return;
-    const q = monthQuarter(m);
-    byQuarter[q].count++;
-    byQuarter[q].millionSum += r.amountMillion;
-  });
-  const totalMillion = SALES_QUARTERS.reduce((s, q) => s + byQuarter[q].millionSum, 0);
-  const totalCount = SALES_QUARTERS.reduce((s, q) => s + byQuarter[q].count, 0);
-  return { byQuarter, totalMillion, totalCount };
-}
-
-function aggregateTeam1ByMonth(rows) {
-  const affilMap = buildInventoryAffiliationMap();
-  const months = {};
-  let team1Count = 0, unmappedCount = 0, unassignedCount = 0;
   rows.forEach(r => {
-    const info = affilMap[r.code];
-    if (info === undefined) { unmappedCount++; return; } // 인벤토리에 코드 없음 → 매핑 실패, 1팀에서 제외
-    let inTeam1;
-    if (!info.hasCol) {
-      TEAM1_AFFIL_FALLBACK_USED = true;
-      inTeam1 = isTeam1ByNameFallback(r.rep);
-    } else {
-      const cls = classifyAffiliation(info.affil);
-      if (cls === 'unassigned') unassignedCount++;
-      inTeam1 = cls === 'team1' || (cls === 'unassigned' && INCLUDE_UNASSIGNED);
-    }
-    if (!inTeam1) return;
+    if (!isTeam1H2ByName(r.rep)) { excludedCount++; return; }
     team1Count++;
     const m = excelDateToMonth(r.billDate);
     if (!m) return;
-    if (!months[m]) months[m] = { product: 0, goods: 0, service: 0, maint: 0, total: 0 };
+    if (!months[m]) months[m] = { product: 0, goods: 0, service: 0, maint: 0, total: 0, count: 0 };
     months[m].product += r.product; months[m].goods += r.goods;
     months[m].service += r.service; months[m].maint += r.maint; months[m].total += r.total;
+    months[m].count++;
   });
-  console.log('[1팀 판별] 매출 실적 — 1팀 분류:', team1Count, '건 / 소속 매핑 실패(제외):', unmappedCount, '건 / 그중 미분류:', unassignedCount, '건');
+  console.log('[1팀 판별] 매출 실적(이름 기준) — 명단:', getTeam1H2Names(), '/ 1팀 분류:', team1Count, '건 / 제외:', excludedCount, '건');
   return months;
 }
 
@@ -3213,16 +3102,15 @@ function parseSalesExcel(wb) {
   };
 }
 
-// 1팀 스코프 데이터(소속 기준 판정)를 매번 새로 계산한다.
+// 1팀 스코프 데이터를 매번 새로 계산한다.
+// 하반기(7~12월)는 주간 회의자료 상세행을 이름 기준(getTeam1H2Names)으로 집계하고,
+// 상반기(1~6월)는 상반기 확정 실적 파일(팀실적 컬럼 기준)이 있으면 그 값으로 덮어쓴다.
 function computeTeam1ScopeData() {
-  const useConfirmed = hasConfirmedRevenue();
-  if (!useConfirmed && !SALES_PARSED) return null;
+  if (!SALES_PARSED) return null;
 
-  // 확정 실적 파일이 있으면 우선 사용(소속 직접 판정, 인벤토리 매핑 불필요) — 없으면 기존 폴백(주간 회의자료 + 이름/인벤토리 매핑)
-  const months = useConfirmed ? aggregateConfirmedRevenueByMonth() : aggregateTeam1ByMonth(SALES_PARSED.teamRows || []);
-  const headerFound = useConfirmed ? true : SALES_PARSED.teamHeaderFound;
+  const months = aggregateTeam1ByMonth(SALES_PARSED.teamRows || []);
+  const headerFound = SALES_PARSED.teamHeaderFound;
 
-  // 상반기(1~6월)는 상반기 확정 실적 파일이 있으면 최우선으로 덮어쓴다(7월 이후는 위에서 이미 계산된 값 유지)
   const useH1 = hasH1Revenue();
   if (useH1) {
     const h1Months = aggregateH1RevenueByMonth();
@@ -3233,39 +3121,17 @@ function computeTeam1ScopeData() {
 
   // 당월 예상액: 본부 요약 행 값이 아니라 1팀으로 판정된 상세행을 재집계
   let team1Forecast = null;
-  if (SALES_PARSED && SALES_PARSED.forecast) {
-    if (useConfirmed) {
-      const monthRows = Object.values(CONFIRMED_REVENUE_FILES).flat().filter(r =>
-        excelDateToMonth(r.actualDate) === SALES_PARSED.forecast.month && isRowInTeam1Scope(r.affiliation));
-      const agg = monthRows.reduce((a, r) => {
-        a.product += r.product * 1000000; a.goods += r.goods * 1000000; a.service += r.service * 1000000;
-        a.maint += r.maint * 1000000; a.total += r.amountMillion * 1000000;
-        return a;
-      }, { product: 0, goods: 0, service: 0, maint: 0, total: 0 });
-      team1Forecast = { month: SALES_PARSED.forecast.month, ...agg };
-    } else {
-      const teamRows = SALES_PARSED.teamRows || [];
-      const affilMap = buildInventoryAffiliationMap();
-      const monthRows = teamRows.filter(r => {
-        if (excelDateToMonth(r.billDate) !== SALES_PARSED.forecast.month) return false;
-        const info = affilMap[r.code];
-        if (info === undefined) return false;
-        if (!info.hasCol) {
-          TEAM1_AFFIL_FALLBACK_USED = true;
-          return isTeam1ByNameFallback(r.rep);
-        }
-        const cls = classifyAffiliation(info.affil);
-        return cls === 'team1' || (cls === 'unassigned' && INCLUDE_UNASSIGNED);
-      });
-      const agg = monthRows.reduce((a, r) => {
-        a.product += r.product; a.goods += r.goods; a.service += r.service; a.maint += r.maint; a.total += r.total;
-        return a;
-      }, { product: 0, goods: 0, service: 0, maint: 0, total: 0 });
-      team1Forecast = { month: SALES_PARSED.forecast.month, ...agg };
-    }
+  if (SALES_PARSED.forecast) {
+    const monthRows = (SALES_PARSED.teamRows || []).filter(r =>
+      excelDateToMonth(r.billDate) === SALES_PARSED.forecast.month && isTeam1H2ByName(r.rep));
+    const agg = monthRows.reduce((a, r) => {
+      a.product += r.product; a.goods += r.goods; a.service += r.service; a.maint += r.maint; a.total += r.total;
+      return a;
+    }, { product: 0, goods: 0, service: 0, maint: 0, total: 0 });
+    team1Forecast = { month: SALES_PARSED.forecast.month, ...agg };
   }
 
-  return { months, forecast: team1Forecast, headerFound, usingConfirmedRevenue: useConfirmed, usingH1Revenue: useH1 };
+  return { months, forecast: team1Forecast, headerFound, usingH1Revenue: useH1 };
 }
 
 // ─── 매출 추이: 목표/실적 계산 ────────────────────────────────────────────────
@@ -3717,6 +3583,29 @@ const todayLinePlugin = {
   }
 };
 
+// 상반기/하반기 경계(6월↔7월)에 얇은 세로 구분선을 그리는 플러그인 — 1팀 스코프에서만 표시
+const h1h2DividerPlugin = {
+  id: 'h1h2Divider',
+  afterDraw(chart) {
+    const opts = chart.options.plugins && chart.options.plugins.h1h2Divider;
+    if (!opts || !opts.show) return;
+    const { ctx, chartArea, scales } = chart;
+    const x1 = scales.x.getPixelForValue(5); // 6월
+    const x2 = scales.x.getPixelForValue(6); // 7월
+    if (x1 == null || x2 == null || isNaN(x1) || isNaN(x2)) return;
+    const x = (x1 + x2) / 2;
+    ctx.save();
+    ctx.strokeStyle = '#3a3f5c';
+    ctx.setLineDash([2, 3]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
 // [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
 function renderSalesChart1(scope, series, forecastData) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
@@ -3779,7 +3668,7 @@ function renderSalesChart1(scope, series, forecastData) {
   salesChart1 = new Chart(ctx, {
     type: 'line',
     data: { labels: series.map(s => s.month + '월'), datasets },
-    plugins: [todayLinePlugin],
+    plugins: [todayLinePlugin, h1h2DividerPlugin],
     options: {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 18 } },
@@ -3788,6 +3677,7 @@ function renderSalesChart1(scope, series, forecastData) {
       plugins: {
         legend: { display: false },
         todayLine: todayMonthIdx != null ? { monthIndex: todayMonthIdx, label: `오늘 (${todayMonthIdx + 1}월)` } : null,
+        h1h2Divider: { show: scope === '팀1' },
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
@@ -4131,14 +4021,21 @@ function updateAffilFallbackNotice() {
   if (el) el.style.display = (SALES_SCOPE === '팀1' && TEAM1_AFFIL_FALLBACK_USED) ? '' : 'none';
 }
 
-function updateConfirmedRevenueFallbackNotice(sd) {
-  const el = document.getElementById('rev2-confirmed-fallback-notice');
-  if (el) el.style.display = (SALES_SCOPE === '팀1' && sd && !sd.usingConfirmedRevenue) ? '' : 'none';
-}
-
 function updateH1FallbackNotice(sd) {
   const el = document.getElementById('rev2-h1-fallback-notice');
   if (el) el.style.display = (SALES_SCOPE === '팀1' && sd && !sd.usingH1Revenue) ? '' : 'none';
+}
+
+function renderH1H2SummaryBar(sd) {
+  const el = document.getElementById('rev2-h1h2-summary-bar');
+  if (!el) return;
+  if (SALES_SCOPE !== '팀1' || !sd) { el.style.display = 'none'; return; }
+  let h1Won = 0, h1Count = 0, h2Won = 0;
+  for (let m = 1; m <= 6; m++) if (sd.months[m]) { h1Won += sd.months[m].total; h1Count += (sd.months[m].count || 0); }
+  for (let m = 7; m <= 12; m++) if (sd.months[m]) h2Won += sd.months[m].total;
+  if (h1Won === 0 && h2Won === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.textContent = `상반기 확정 ${wonToEok(h1Won).toFixed(1)}억(${h1Count}건) · 하반기 ${wonToEok(h2Won).toFixed(1)}억 · 합계 ${wonToEok(h1Won + h2Won).toFixed(1)}억`;
 }
 
 function renderSalesTrend() {
@@ -4151,24 +4048,23 @@ function renderSalesTrend() {
   warnEl.innerHTML = '';
   empty.querySelector('p').textContent = SALES_EMPTY_MSG_DEFAULT;
 
-  // 파이프라인/미분류/확정실적 관련 UI는 인벤토리 분석 결과·업로드된 확정실적 파일만 있으면 동작 — SALES_PARSED 유무와 무관
+  // 파이프라인/미분류/오수택 관련 UI는 인벤토리 분석 결과만 있으면 동작 — SALES_PARSED 유무와 무관
   const forecastData = computeForecastSummary(SALES_SCOPE);
   renderUnassignedControl(forecastData);
+  renderOstaekControl();
   renderProbFilterUI(forecastData ? forecastData.sectionAmounts : null);
-  renderConfirmedRevenueUI();
   renderH1RevenueUI();
 
   if (!SALES_PARSED) {
     empty.style.display = '';
     content.style.display = 'none';
     updateAffilFallbackNotice();
-    updateConfirmedRevenueFallbackNotice(null);
     updateH1FallbackNotice(null);
+    renderH1H2SummaryBar(null);
     return;
   }
 
   const sd = getScopeData(SALES_SCOPE);
-  updateConfirmedRevenueFallbackNotice(sd);
   updateH1FallbackNotice(sd);
 
   if (SALES_SCOPE === '본부' && !sd.headerFound) {
@@ -4179,12 +4075,14 @@ function renderSalesTrend() {
     empty.style.display = '';
     content.style.display = 'none';
     updateAffilFallbackNotice();
+    renderH1H2SummaryBar(null);
     return;
   }
 
   empty.style.display = 'none';
   content.style.display = '';
 
+  renderH1H2SummaryBar(sd);
   const series = buildMonthlySeries(SALES_SCOPE);
   renderSalesSummary(SALES_SCOPE, series, forecastData);
   renderSalesChart1(SALES_SCOPE, series, forecastData);
@@ -4297,6 +4195,47 @@ async function restoreIncludeUnassigned() {
   } catch (e) { /* 저장 데이터가 깨졌으면 기본값(포함) 유지 */ }
 }
 
+// ─── 매출 추이: 오수택 포함 체크박스 (1팀 스코프, 하반기 실적에만 적용) ────────────
+
+// 오수택이 하반기(7~12월)에 기여하는 금액(억원) — 체크박스 라벨 표기용
+function getOstaekH2AmountEok() {
+  if (!SALES_PARSED) return 0;
+  const total = (SALES_PARSED.teamRows || [])
+    .filter(r => String(r.rep || '').replace(/\s/g, '') === '오수택')
+    .filter(r => { const m = excelDateToMonth(r.billDate); return m != null && m >= 7; })
+    .reduce((s, r) => s + (r.total || 0), 0);
+  return wonToEok(total);
+}
+
+function renderOstaekControl() {
+  const el = document.getElementById('rev2-ostaek-control');
+  if (!el) return;
+  if (SALES_SCOPE !== '팀1') { el.style.display = 'none'; return; }
+  el.style.display = '';
+  document.getElementById('rev2-ostaek-checkbox-input').checked = INCLUDE_OSTAEK;
+  document.getElementById('rev2-ostaek-amt').textContent = `(${getOstaekH2AmountEok().toFixed(1)}억)`;
+}
+
+function toggleIncludeOstaek(checked) {
+  INCLUDE_OSTAEK = checked;
+  saveIncludeOstaek();
+  renderSalesTrend();
+}
+
+async function saveIncludeOstaek() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set('include_ostaek', INCLUDE_OSTAEK); }
+  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+
+async function restoreIncludeOstaek() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get('include_ostaek');
+    if (typeof saved === 'boolean') INCLUDE_OSTAEK = saved;
+  } catch (e) { /* 저장 데이터가 깨졌으면 기본값(포함) 유지 */ }
+}
+
 function processSalesFile(file) {
   if (!file.name.match(/\.(xlsx|xls)$/i)) {
     alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
@@ -4394,83 +4333,6 @@ function setupSalesUpload() {
   });
 }
 
-// ─── 매출 추이: 분기별 확정 매출실적 업로드/저장/복원 ──────────────────────────────
-
-function processConfirmedRevenueFiles(fileList) {
-  Array.from(fileList).forEach(file => {
-    if (!file.name.match(/\.(xlsx|xls)$/i)) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
-      CONFIRMED_REVENUE_FILES[file.name] = parseConfirmedRevenueSheet(wb, file.name);
-      renderConfirmedRevenueUI();
-      saveConfirmedRevenue();
-      renderSalesTrend();
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-function removeConfirmedRevenueFile(fileName) {
-  delete CONFIRMED_REVENUE_FILES[fileName];
-  renderConfirmedRevenueUI();
-  saveConfirmedRevenue();
-  renderSalesTrend();
-}
-
-function renderConfirmedRevenueUI() {
-  const listEl = document.getElementById('rev2-confirmed-files-list');
-  const summaryEl = document.getElementById('rev2-confirmed-summary-bar');
-  if (!listEl || !summaryEl) return;
-
-  const fileNames = Object.keys(CONFIRMED_REVENUE_FILES);
-  listEl.innerHTML = fileNames.map(name => `
-    <span class="rev2-confirmed-file-chip">${escHtml(name)}<button type="button" onclick="removeConfirmedRevenueFile('${escHtml(name).replace(/'/g, "\\'")}')">×</button></span>
-  `).join('');
-
-  if (fileNames.length === 0) { summaryEl.textContent = ''; return; }
-
-  const s = buildConfirmedRevenueQuarterSummary();
-  const parts = SALES_QUARTERS.filter(q => s.byQuarter[q].count > 0)
-    .map(q => `${q} ${millionToEok(s.byQuarter[q].millionSum).toFixed(1)}억(${s.byQuarter[q].count}건)`);
-  summaryEl.textContent = parts.length
-    ? `확정 실적: ${parts.join(' · ')} · 합계 ${millionToEok(s.totalMillion).toFixed(1)}억`
-    : '확정 실적: 1팀으로 판정된 건이 없습니다.';
-}
-
-const CONFIRMED_REVENUE_STORAGE_KEY = 'confirmed_revenue';
-
-async function saveConfirmedRevenue() {
-  if (!window.idbKeyval) return;
-  try { await idbKeyval.set(CONFIRMED_REVENUE_STORAGE_KEY, roundNumbersDeep(CONFIRMED_REVENUE_FILES)); }
-  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
-}
-
-async function restoreConfirmedRevenue() {
-  if (!window.idbKeyval) return;
-  try {
-    const saved = await idbKeyval.get(CONFIRMED_REVENUE_STORAGE_KEY);
-    if (saved && typeof saved === 'object') CONFIRMED_REVENUE_FILES = saved;
-  } catch (e) { /* 저장 데이터가 깨졌으면 빈 상태로 시작 */ }
-}
-
-function setupConfirmedRevenueUpload() {
-  const card  = document.getElementById('rev2-confirmed-upload-card');
-  const input = document.getElementById('rev2-confirmed-upload-input');
-  card.addEventListener('click', () => input.click());
-  input.addEventListener('change', e => {
-    if (e.target.files.length) processConfirmedRevenueFiles(e.target.files);
-    e.target.value = '';
-  });
-  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
-  card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); });
-  card.addEventListener('drop', e => {
-    e.preventDefault();
-    card.classList.remove('drag-over');
-    if (e.dataTransfer.files.length) processConfirmedRevenueFiles(e.dataTransfer.files);
-  });
-}
-
 // ─── 매출 추이: 상반기 확정 실적 업로드/저장/복원 (단일 파일, 재업로드 시 덮어쓰기) ─────
 
 function processH1RevenueFile(file) {
@@ -4483,6 +4345,7 @@ function processH1RevenueFile(file) {
     const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
     CONFIRMED_H1_REVENUE_ROWS = parseH1RevenueSheet(wb, file.name);
     CONFIRMED_H1_REVENUE_FILENAME = file.name;
+    CONFIRMED_H1_REVENUE_REGISTERED_AT = Date.now();
     verifyH1Revenue(aggregateH1RevenueByMonth()); // 업로드 시점에 한 번만 검증 로그 출력
     renderH1RevenueUI();
     saveH1Revenue();
@@ -4491,19 +4354,46 @@ function processH1RevenueFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
+function removeH1RevenueFile() {
+  if (!confirm('등록된 상반기 확정 실적을 삭제하시겠습니까?\n삭제하면 상반기(1~6월)도 하반기와 동일하게 담당자명 기준으로 집계됩니다.')) return;
+  CONFIRMED_H1_REVENUE_ROWS = [];
+  CONFIRMED_H1_REVENUE_FILENAME = '';
+  CONFIRMED_H1_REVENUE_REGISTERED_AT = null;
+  renderH1RevenueUI();
+  saveH1Revenue();
+  renderSalesTrend();
+}
+
+function toggleH1Section() {
+  const body = document.getElementById('rev2-h1-body');
+  const icon = document.getElementById('rev2-h1-toggle-icon');
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  icon.textContent = collapsed ? '▾' : '▸';
+}
+
 function renderH1RevenueUI() {
   const nameEl = document.getElementById('rev2-h1-upload-name');
   const cardEl = document.getElementById('rev2-h1-upload-card');
-  const summaryEl = document.getElementById('rev2-h1-summary-bar');
-  if (!nameEl || !summaryEl) return;
+  const badgeEl = document.getElementById('rev2-h1-status-badge');
+  const actionsEl = document.getElementById('rev2-h1-actions');
+  if (!nameEl || !badgeEl) return;
 
   nameEl.textContent = CONFIRMED_H1_REVENUE_FILENAME;
   if (cardEl) cardEl.classList.toggle('has-file', !!CONFIRMED_H1_REVENUE_FILENAME);
 
-  if (!hasH1Revenue()) { summaryEl.textContent = ''; return; }
-  const months = aggregateH1RevenueByMonth();
-  const s = buildH1RevenueSummary(months);
-  summaryEl.textContent = `1팀 상반기 확정: Q1 ${s.q1Eok.toFixed(1)}억 · Q2 ${s.q2Eok.toFixed(1)}억 · 합계 ${s.totalEok.toFixed(1)}억 (${s.totalCount}건)`;
+  if (hasH1Revenue()) {
+    const months = aggregateH1RevenueByMonth();
+    const s = buildH1RevenueSummary(months);
+    const dateStr = CONFIRMED_H1_REVENUE_REGISTERED_AT ? formatDateYMD(CONFIRMED_H1_REVENUE_REGISTERED_AT) : '';
+    badgeEl.textContent = `✓ 등록됨 · ${s.totalEok.toFixed(1)}억(${s.totalCount}건)${dateStr ? ' · ' + dateStr + ' 등록' : ''}`;
+    badgeEl.style.color = 'var(--up)';
+    if (actionsEl) actionsEl.style.display = '';
+  } else {
+    badgeEl.textContent = '미등록 — 상반기 실적이 정확하지 않을 수 있습니다';
+    badgeEl.style.color = 'var(--del)';
+    if (actionsEl) actionsEl.style.display = 'none';
+  }
 }
 
 const CONFIRMED_H1_REVENUE_STORAGE_KEY = 'confirmed_h1_revenue';
@@ -4512,7 +4402,7 @@ async function saveH1Revenue() {
   if (!window.idbKeyval) return;
   try {
     await idbKeyval.set(CONFIRMED_H1_REVENUE_STORAGE_KEY, roundNumbersDeep({
-      fileName: CONFIRMED_H1_REVENUE_FILENAME, rows: CONFIRMED_H1_REVENUE_ROWS,
+      fileName: CONFIRMED_H1_REVENUE_FILENAME, rows: CONFIRMED_H1_REVENUE_ROWS, registeredAt: CONFIRMED_H1_REVENUE_REGISTERED_AT,
     }));
   } catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
 }
@@ -4524,6 +4414,7 @@ async function restoreH1Revenue() {
     if (!saved || !Array.isArray(saved.rows)) return;
     CONFIRMED_H1_REVENUE_ROWS = saved.rows;
     CONFIRMED_H1_REVENUE_FILENAME = saved.fileName || '';
+    CONFIRMED_H1_REVENUE_REGISTERED_AT = saved.registeredAt || null;
   } catch (e) { /* 저장 데이터가 깨졌으면 빈 상태로 시작 */ }
 }
 
