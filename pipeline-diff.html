@@ -622,6 +622,7 @@
         <div class="rev2-unassigned-list" id="rev2-unassigned-list" style="display:none"></div>
       </div>
       <div class="rev2-confirmed-fallback-notice" id="rev2-confirmed-fallback-notice" style="display:none">확정 실적 파일이 없어 담당자명 기준으로 집계했습니다.<br>오수택·윤호영·담당자 미기재 건이 누락될 수 있습니다.</div>
+      <div class="rev2-confirmed-fallback-notice" id="rev2-h1-fallback-notice" style="display:none">상반기 확정 실적 파일이 없어 담당자명 기준으로 집계했습니다.<br>일부 건이 누락될 수 있습니다.</div>
 
       <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
         <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
@@ -643,6 +644,15 @@
       </div>
       <div class="rev2-confirmed-files-list" id="rev2-confirmed-files-list"></div>
       <div class="rev2-confirmed-summary-bar" id="rev2-confirmed-summary-bar"></div>
+
+      <div class="upload-card" id="rev2-h1-upload-card" style="max-width:560px">
+        <input type="file" accept=".xlsx,.xls" id="rev2-h1-upload-input" style="display:none">
+        <div class="upload-icon">📗</div>
+        <div class="upload-label">상반기 확정 실적 (팀 분류 포함)</div>
+        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
+        <div class="upload-filename" id="rev2-h1-upload-name"></div>
+      </div>
+      <div class="rev2-confirmed-summary-bar" id="rev2-h1-summary-bar"></div>
 
       <div id="rev2-warning"></div>
 
@@ -787,11 +797,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupCard('sal', 'curr');
   setupSalesUpload();
   setupConfirmedRevenueUpload();
+  setupH1RevenueUpload();
   await loadRevenueForecast();
   await restorePipelineProbFilter();
   await restoreIncludeUnassigned();
   await restoreConfirmedRevenue();
   renderConfirmedRevenueUI();
+  await restoreH1Revenue();
+  renderH1RevenueUI();
   await restoreSalesCompareData();
   await restoreSalesTrendData();
   await restoreLastActiveTab();
@@ -1485,6 +1498,9 @@ async function clearAllStoredData() {
   INCLUDE_UNASSIGNED = true;
   CONFIRMED_REVENUE_FILES = {};
   renderConfirmedRevenueUI();
+  CONFIRMED_H1_REVENUE_ROWS = [];
+  CONFIRMED_H1_REVENUE_FILENAME = '';
+  renderH1RevenueUI();
   if (typeof renderForecastSection === 'function') renderForecastSection();
   try {
     if (window.idbKeyval) {
@@ -1493,6 +1509,7 @@ async function clearAllStoredData() {
       await idbKeyval.del('pipeline_prob_filter');
       await idbKeyval.del('include_unassigned');
       await idbKeyval.del(CONFIRMED_REVENUE_STORAGE_KEY);
+      await idbKeyval.del(CONFIRMED_H1_REVENUE_STORAGE_KEY);
     }
   } catch (e) { /* 무시 */ }
   alert('저장된 데이터를 모두 삭제했습니다.');
@@ -2871,6 +2888,131 @@ function parseConfirmedRevenueSheet(wb, fileName) {
   }));
 }
 
+// ─── 매출 추이: 상반기 확정 실적 (팀실적 컬럼 기준, 인벤토리/소속 매핑 불필요) ─────
+// 단일 파일(재업로드 시 덮어쓰기). 헤더는 row[2] 한 줄, 데이터는 row[3]부터. 금액 단위는 원.
+let CONFIRMED_H1_REVENUE_ROWS = [];
+let CONFIRMED_H1_REVENUE_FILENAME = '';
+
+function hasH1Revenue() { return CONFIRMED_H1_REVENUE_ROWS.length > 0; }
+
+function parseH1RevenueSheet(wb, fileName) {
+  console.log('[상반기 실적 파싱]', fileName, '시트 목록:', wb.SheetNames);
+  const targetName = wb.SheetNames.find(n => n.includes('매출')) || wb.SheetNames[0];
+  console.log('[상반기 실적 파싱]', fileName, '탐지된 시트:', targetName);
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[targetName], { header: 1, defval: '' });
+  if (!raw || raw.length < 4) { console.log('[상반기 실적 파싱]', fileName, '데이터가 없습니다.'); return []; }
+
+  const row2 = raw[2] || [];
+  let colCode        = findHeaderCol([row2], /프로젝트\s*코드/);
+  const colName      = findHeaderCol([row2], '프로젝트명');
+  const colCust      = findHeaderCol([row2], /고객사/);
+  const colProduct   = findHeaderCol([row2], '제품');
+  const colGoods     = findHeaderCol([row2], '상품');
+  const colService   = findHeaderCol([row2], '용역');
+  const colMaint     = findHeaderCol([row2], /유지/);
+  const colTotal     = findHeaderCol([row2], '합계');
+  const colRep       = findHeaderCol([row2], /매출실적영업대표|영업대표/);
+  const colTeam      = findHeaderCol([row2], '팀실적');
+  const colActualDate = findHeaderCol([row2], '매출실적일자'); // 월 구분 기준(매출청구일이 아님)
+
+  if (colCode < 0) colCode = scanOpCodeColumn(raw, 3);
+
+  console.log('[상반기 실적 파싱]', fileName, '컬럼 인덱스 →', {
+    프로젝트코드: colCode, 프로젝트명: colName, 고객사명: colCust,
+    제품: colProduct, 상품: colGoods, 용역: colService, 유지관리: colMaint, 합계: colTotal,
+    매출실적영업대표: colRep, 팀실적: colTeam, 매출실적일자: colActualDate,
+  });
+  if (colCode < 0) { console.warn('[상반기 실적 파싱]', fileName, '프로젝트코드 컬럼을 찾지 못했습니다.'); return []; }
+
+  const dataRows = raw.slice(3).filter(r => r[colCode] && /^OP-/i.test(String(r[colCode]).trim()));
+  console.log('[상반기 실적 파싱]', fileName, '읽은 행 수:', dataRows.length);
+
+  if (colTeam >= 0) {
+    const uniqueTeams = [...new Set(dataRows.map(r => String(r[colTeam] || '').trim()).filter(Boolean))];
+    console.log('[상반기 실적 파싱] 팀실적 고유값 목록:', fileName, uniqueTeams);
+  } else {
+    console.warn('[상반기 실적 파싱]', fileName, '팀실적 컬럼을 찾지 못했습니다.');
+  }
+
+  let dateFailCount = 0;
+  const num = (r, col) => col >= 0 ? (Number(r[col]) || 0) : 0;
+  const rows = dataRows.map(r => {
+    // 매출실적일자는 Date 객체/엑셀 일련번호/문자열("2026-01-27") 모두 올 수 있어 parseExcelDateFull로 전부 처리
+    const dateObj = colActualDate >= 0 ? parseExcelDateFull(r[colActualDate]) : null;
+    if (colActualDate >= 0 && !dateObj) dateFailCount++;
+    return {
+      code: String(r[colCode]).trim(),
+      name: colName >= 0 ? String(r[colName] || '').trim() : '',
+      cust: colCust >= 0 ? String(r[colCust] || '').trim() : '',
+      team: colTeam >= 0 ? String(r[colTeam] || '').trim() : '',
+      rep: colRep >= 0 ? String(r[colRep] || '').trim() : '',
+      product: num(r, colProduct), goods: num(r, colGoods), service: num(r, colService), maint: num(r, colMaint),
+      amountWon: colTotal >= 0 ? (Number(r[colTotal]) || 0) : 0,
+      actualMonth: dateObj ? dateObj.month : null,
+      actualYear: dateObj ? dateObj.year : null,
+    };
+  });
+  console.log('[상반기 실적 파싱]', fileName, '날짜 파싱 실패 건수:', dateFailCount);
+
+  return rows;
+}
+
+// "팀실적" 컬럼 값이 정확히 "1팀 실적"인 행만 1팀으로 인정(공백 제거 후 비교)
+function isH1RowTeam1(teamValue) {
+  return String(teamValue || '').replace(/\s/g, '') === '1팀실적';
+}
+
+// 상반기 확정 실적 전체를 월별로 집계(매출실적일자 기준, 금액 단위는 원 그대로)
+function aggregateH1RevenueByMonth() {
+  const months = {};
+  let team1Count = 0, excludedCount = 0, dateFailCount = 0;
+  CONFIRMED_H1_REVENUE_ROWS.forEach(r => {
+    if (!isH1RowTeam1(r.team)) { excludedCount++; return; }
+    if (r.actualMonth == null) { dateFailCount++; return; }
+    team1Count++;
+    if (!months[r.actualMonth]) months[r.actualMonth] = { product: 0, goods: 0, service: 0, maint: 0, total: 0, count: 0 };
+    months[r.actualMonth].product += r.product; months[r.actualMonth].goods += r.goods;
+    months[r.actualMonth].service += r.service; months[r.actualMonth].maint += r.maint;
+    months[r.actualMonth].total += r.amountWon; months[r.actualMonth].count++;
+  });
+  console.log('[1팀 판별] 상반기 확정 실적 — 1팀 분류:', team1Count, '건 / 제외:', excludedCount, '건 / 날짜 파싱 실패:', dateFailCount, '건');
+  return months;
+}
+
+// 스펙 검증 기준값과 비교해 콘솔에 일치 여부를 출력
+const H1_EXPECTED_MONTHLY = {
+  1: { count: 4,  sumMillion: 2629.3 },
+  2: { count: 12, sumMillion: 1079.3 },
+  3: { count: 13, sumMillion: 2363.0 },
+  4: { count: 13, sumMillion: 804.7 },
+  5: { count: 12, sumMillion: 506.1 },
+  6: { count: 17, sumMillion: 4613.0 },
+};
+function verifyH1Revenue(months) {
+  let allMatch = true;
+  for (let m = 1; m <= 6; m++) {
+    const exp = H1_EXPECTED_MONTHLY[m];
+    const actual = months[m] || { count: 0, total: 0 };
+    const actualMillion = Math.round((actual.total / 1000000) * 10) / 10;
+    const ok = actual.count === exp.count && Math.abs(actualMillion - exp.sumMillion) < 0.15;
+    if (!ok) allMatch = false;
+    console.log(`[검증] ${m}월 — 기대: ${exp.count}건 ${exp.sumMillion}백만 / 실제: ${actual.count}건 ${actualMillion}백만 / ${ok ? '일치' : '불일치'}`);
+  }
+  const totalMillion = Object.values(months).reduce((s, mo) => s + mo.total, 0) / 1000000;
+  const totalCount = Object.values(months).reduce((s, mo) => s + mo.count, 0);
+  console.log(`[검증] 합계 — 실제: ${totalCount}건 ${Math.round(totalMillion * 10) / 10}백만(${(totalMillion / 100).toFixed(1)}억) / 기대: 71건 11995.4백만(120.0억) / ${allMatch ? '전체 일치' : '불일치 있음'}`);
+  return allMatch;
+}
+
+// 요약 바 표시용: "1팀 상반기 확정: Q1 60.7억 · Q2 59.2억 · 합계 120.0억 (71건)"
+function buildH1RevenueSummary(months) {
+  let q1Won = 0, q2Won = 0, totalCount = 0;
+  for (let m = 1; m <= 3; m++) if (months[m]) q1Won += months[m].total;
+  for (let m = 4; m <= 6; m++) if (months[m]) q2Won += months[m].total;
+  for (let m = 1; m <= 6; m++) if (months[m]) totalCount += months[m].count;
+  return { q1Eok: wonToEok(q1Won), q2Eok: wonToEok(q2Won), totalEok: wonToEok(q1Won + q2Won), totalCount };
+}
+
 // "월" 셀 오른쪽에 제품/상품/용역/유지관리/합계가 순서대로 있는 행을 찾아 헤더로 사용 (상단 20행 이내)
 function findHQSummaryHeader(raw) {
   const maxScan = Math.min(20, raw.length);
@@ -3080,6 +3222,15 @@ function computeTeam1ScopeData() {
   const months = useConfirmed ? aggregateConfirmedRevenueByMonth() : aggregateTeam1ByMonth(SALES_PARSED.teamRows || []);
   const headerFound = useConfirmed ? true : SALES_PARSED.teamHeaderFound;
 
+  // 상반기(1~6월)는 상반기 확정 실적 파일이 있으면 최우선으로 덮어쓴다(7월 이후는 위에서 이미 계산된 값 유지)
+  const useH1 = hasH1Revenue();
+  if (useH1) {
+    const h1Months = aggregateH1RevenueByMonth();
+    for (let m = 1; m <= 6; m++) {
+      if (h1Months[m]) months[m] = h1Months[m]; else delete months[m];
+    }
+  }
+
   // 당월 예상액: 본부 요약 행 값이 아니라 1팀으로 판정된 상세행을 재집계
   let team1Forecast = null;
   if (SALES_PARSED && SALES_PARSED.forecast) {
@@ -3114,7 +3265,7 @@ function computeTeam1ScopeData() {
     }
   }
 
-  return { months, forecast: team1Forecast, headerFound, usingConfirmedRevenue: useConfirmed };
+  return { months, forecast: team1Forecast, headerFound, usingConfirmedRevenue: useConfirmed, usingH1Revenue: useH1 };
 }
 
 // ─── 매출 추이: 목표/실적 계산 ────────────────────────────────────────────────
@@ -3985,6 +4136,11 @@ function updateConfirmedRevenueFallbackNotice(sd) {
   if (el) el.style.display = (SALES_SCOPE === '팀1' && sd && !sd.usingConfirmedRevenue) ? '' : 'none';
 }
 
+function updateH1FallbackNotice(sd) {
+  const el = document.getElementById('rev2-h1-fallback-notice');
+  if (el) el.style.display = (SALES_SCOPE === '팀1' && sd && !sd.usingH1Revenue) ? '' : 'none';
+}
+
 function renderSalesTrend() {
   TEAM1_AFFIL_FALLBACK_USED = false; // 이번 렌더링에서 폴백이 쓰였는지 다시 판단하기 위해 매번 리셋
   renderForecastSection(); // 매출 예상 입력 표는 인벤토리 데이터만 있으면 독립적으로 동작
@@ -4000,17 +4156,20 @@ function renderSalesTrend() {
   renderUnassignedControl(forecastData);
   renderProbFilterUI(forecastData ? forecastData.sectionAmounts : null);
   renderConfirmedRevenueUI();
+  renderH1RevenueUI();
 
   if (!SALES_PARSED) {
     empty.style.display = '';
     content.style.display = 'none';
     updateAffilFallbackNotice();
     updateConfirmedRevenueFallbackNotice(null);
+    updateH1FallbackNotice(null);
     return;
   }
 
   const sd = getScopeData(SALES_SCOPE);
   updateConfirmedRevenueFallbackNotice(sd);
+  updateH1FallbackNotice(sd);
 
   if (SALES_SCOPE === '본부' && !sd.headerFound) {
     warnEl.innerHTML = `<div class="inv-bulk-warn">⚠ 상단 요약표를 찾지 못했습니다. 엑셀 구조를 확인해주세요.</div>`;
@@ -4309,6 +4468,81 @@ function setupConfirmedRevenueUpload() {
     e.preventDefault();
     card.classList.remove('drag-over');
     if (e.dataTransfer.files.length) processConfirmedRevenueFiles(e.dataTransfer.files);
+  });
+}
+
+// ─── 매출 추이: 상반기 확정 실적 업로드/저장/복원 (단일 파일, 재업로드 시 덮어쓰기) ─────
+
+function processH1RevenueFile(file) {
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+    CONFIRMED_H1_REVENUE_ROWS = parseH1RevenueSheet(wb, file.name);
+    CONFIRMED_H1_REVENUE_FILENAME = file.name;
+    verifyH1Revenue(aggregateH1RevenueByMonth()); // 업로드 시점에 한 번만 검증 로그 출력
+    renderH1RevenueUI();
+    saveH1Revenue();
+    renderSalesTrend();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderH1RevenueUI() {
+  const nameEl = document.getElementById('rev2-h1-upload-name');
+  const cardEl = document.getElementById('rev2-h1-upload-card');
+  const summaryEl = document.getElementById('rev2-h1-summary-bar');
+  if (!nameEl || !summaryEl) return;
+
+  nameEl.textContent = CONFIRMED_H1_REVENUE_FILENAME;
+  if (cardEl) cardEl.classList.toggle('has-file', !!CONFIRMED_H1_REVENUE_FILENAME);
+
+  if (!hasH1Revenue()) { summaryEl.textContent = ''; return; }
+  const months = aggregateH1RevenueByMonth();
+  const s = buildH1RevenueSummary(months);
+  summaryEl.textContent = `1팀 상반기 확정: Q1 ${s.q1Eok.toFixed(1)}억 · Q2 ${s.q2Eok.toFixed(1)}억 · 합계 ${s.totalEok.toFixed(1)}억 (${s.totalCount}건)`;
+}
+
+const CONFIRMED_H1_REVENUE_STORAGE_KEY = 'confirmed_h1_revenue';
+
+async function saveH1Revenue() {
+  if (!window.idbKeyval) return;
+  try {
+    await idbKeyval.set(CONFIRMED_H1_REVENUE_STORAGE_KEY, roundNumbersDeep({
+      fileName: CONFIRMED_H1_REVENUE_FILENAME, rows: CONFIRMED_H1_REVENUE_ROWS,
+    }));
+  } catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+
+async function restoreH1Revenue() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get(CONFIRMED_H1_REVENUE_STORAGE_KEY);
+    if (!saved || !Array.isArray(saved.rows)) return;
+    CONFIRMED_H1_REVENUE_ROWS = saved.rows;
+    CONFIRMED_H1_REVENUE_FILENAME = saved.fileName || '';
+  } catch (e) { /* 저장 데이터가 깨졌으면 빈 상태로 시작 */ }
+}
+
+function setupH1RevenueUpload() {
+  const card  = document.getElementById('rev2-h1-upload-card');
+  const input = document.getElementById('rev2-h1-upload-input');
+  card.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) processH1RevenueFile(f);
+    e.target.value = '';
+  });
+  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); });
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) processH1RevenueFile(f);
   });
 }
 </script>
