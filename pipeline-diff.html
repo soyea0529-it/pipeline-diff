@@ -90,6 +90,14 @@
   .c-down .s-value { color: var(--down); }
   .c-total .s-value { color: var(--text); }
 
+  /* 요약 카드: 핵심 지표(②) 강조 스타일 / 참고 지표(③④) 연한 스타일 */
+  .summary-card-highlight { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .summary-card-highlight .s-value { color: var(--accent); }
+  .s-value-xl { font-size: 30px !important; }
+  .summary-card-muted { background: #191c29; border-color: #22263a; }
+  .summary-card-muted .s-label, .summary-card-muted .s-value, .summary-card-muted .s-sub { color: var(--text-sub); }
+  .summary-card-muted .s-value { font-size: 20px; font-weight: 700; }
+
   /* Filter bar */
   .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
   .filter-btn { padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; color: var(--text-sub); cursor: pointer; transition: all .2s; }
@@ -398,17 +406,27 @@
   .rev2-pipe-legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--text-sub); }
   .rev2-pipe-legend-item { display: flex; align-items: center; gap: 6px; }
 
-  .rev2-unmatched-notice { font-size: 11px; color: var(--text-sub); margin-top: 10px; }
   .rev2-detail-link { color: var(--accent); cursor: pointer; margin-left: 6px; text-decoration: none; }
   .rev2-detail-link:hover { text-decoration: underline; }
-  .rev2-unmatched-list { margin-top: 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-  .rev2-unmatched-row { display: flex; gap: 10px; padding: 6px 10px; font-size: 11.5px; border-bottom: 1px solid var(--border); }
-  .rev2-unmatched-row:last-child { border-bottom: none; }
-  .rev2-unmatched-row .code { font-family: monospace; color: var(--accent); flex-shrink: 0; width: 110px; }
-  .rev2-unmatched-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rev2-unmatched-row .amt  { flex-shrink: 0; color: var(--text-sub); }
+  .rev2-unmatched-panel { margin-top: 10px; }
+  .rev2-unmatched-newbanner {
+    font-size: 11.5px; color: #f5c518; background: #3a2f08; border-radius: 6px;
+    padding: 7px 12px; margin-bottom: 10px;
+  }
+  .rev2-unmatched-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .rev2-unmatched-summarybar { font-size: 12px; color: var(--text); font-weight: 600; margin-right: auto; }
+  .rev2-unmatched-table-wrap { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .rev2-unmatched-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .rev2-unmatched-table thead th {
+    position: sticky; top: 0; z-index: 1;
+    padding: 8px 10px; text-align: left; font-size: 10.5px; font-weight: 600; color: var(--text-sub);
+    background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .rev2-unmatched-table td { padding: 6px 10px; border-bottom: 1px solid #1e2136; vertical-align: middle; }
+  .rev2-unmatched-table .rev2-code { font-family: monospace; color: var(--accent); font-size: 11px; }
+  .rev2-unmatched-table .rev2-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .rev2-prob-filter-row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .rev2-prob-filter-row { display: flex; gap: 32px; flex-wrap: wrap; row-gap: 16px; }
   .rev2-prob-chip { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none; }
   .rev2-prob-chip input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-color: var(--chip-color, var(--accent)); }
   .rev2-prob-chip-amt { font-size: 11px; color: var(--text-sub); }
@@ -690,7 +708,7 @@
 
       <div id="rev2-content" style="display:none">
         <div class="chart-card" id="rev2-prob-filter-card">
-          <div class="chart-card-title">파이프라인 포함 구간</div>
+          <div class="chart-card-title">매출예상 반영사업</div>
           <div class="rev2-prob-filter-row" id="rev2-prob-filter-row"></div>
         </div>
 
@@ -698,27 +716,39 @@
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
         <div class="chart-card">
-          <div class="chart-card-title">목표 대비 누적 실적 + 파이프라인 전망</div>
+          <div class="chart-card-title">연간 목표 대비 실적 및 매출예상 추이</div>
           <div class="rev2-legend" id="rev2-main-legend"></div>
           <div class="rev2-actual-status-line" id="rev2-actual-status-line"></div>
-          <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
+          <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 매출예상이 함께 표시됩니다</div>
           <div class="chart-wrap"><canvas id="rev2-chart1"></canvas></div>
           <div class="rev2-footnote" id="rev2-forecast-month-footnote" style="display:none"></div>
-          <div class="rev2-footnote" id="rev2-pipeline-source-footnote">※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.</div>
-          <div class="rev2-footnote" id="rev2-excluded-footnote">※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.</div>
-          <div class="rev2-footnote" id="rev2-remainder-footnote">※ 100% 구간은 인벤토리 수주금액에서 매출 실적으로 이미 청구된 금액을 차감한 미청구 잔여분 기준으로 후보 목록에 반영됩니다.</div>
-          <div class="rev2-unmatched-notice" id="rev2-unmatched-notice" style="display:none">
-            <span id="rev2-unmatched-text"></span>
-            <a href="#" class="rev2-detail-link" id="rev2-unmatched-toggle" onclick="toggleUnmatchedDetail(event)">[상세보기]</a>
-            <div class="rev2-unmatched-list" id="rev2-unmatched-list" style="display:none"></div>
+          <div class="rev2-footnote" id="rev2-pipeline-source-footnote">※ 매출예상은 사업별로 등록된 매출 예상월과 예상금액을 합산한 값입니다.<br>매출 예상이 등록되지 않은 사업은 반영되지 않습니다.</div>
+          <div class="rev2-footnote" id="rev2-remainder-footnote">※ 100% 구간은 계약이 완료된 사업이므로, 이미 매출로 청구된 금액을 차감한 미청구 잔여분만 반영합니다.</div>
+          <div class="rev2-footnote" id="rev2-unmatched-footnote" style="display:none">
+            <span id="rev2-unmatched-footnote-text"></span><a href="#" class="rev2-detail-link" id="rev2-unmatched-toggle" onclick="toggleUnmatchedDetail(event)">[상세보기]</a>
+            <div class="rev2-unmatched-panel" id="rev2-unmatched-panel" style="display:none">
+              <div class="rev2-unmatched-newbanner" id="rev2-unmatched-newbanner" style="display:none"></div>
+              <div class="rev2-unmatched-toolbar">
+                <span class="rev2-unmatched-summarybar" id="rev2-unmatched-summarybar"></span>
+                <button type="button" class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="selectAllUnmatched100(true)">전체 선택</button>
+                <button type="button" class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="selectAllUnmatched100(false)">전체 해제</button>
+              </div>
+              <div class="rev2-unmatched-table-wrap">
+                <table class="rev2-unmatched-table">
+                  <thead><tr><th></th><th>사업코드</th><th>사업명</th><th>영업담당자</th><th>수주금액(백만)</th></tr></thead>
+                  <tbody id="rev2-unmatched-tbody"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
+          <div class="rev2-footnote" id="rev2-excluded-footnote" style="display:none"></div>
           <div class="rev2-footnote" id="rev2-unassigned-footnote" style="display:none"></div>
-          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어 중간 월은 분기 목표를 균등 배분한 참고값입니다. 분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
+          <div class="rev2-footnote">※ 목표는 분기 단위로 수립되어, 중간 월은 분기 목표를 균등 배분한 참고값입니다.<br>분기 경계(3·6·9·12월)는 실제 목표값입니다.</div>
         </div>
 
         <div class="chart-card" id="rev2-pipe-card">
-          <div class="chart-card-title">확도별 파이프라인 구성</div>
-          <div class="rev2-pipeline-notice" id="rev2-pipe-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다</div>
+          <div class="chart-card-title">수주확도별 매출예상 구성</div>
+          <div class="rev2-pipeline-notice" id="rev2-pipe-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 매출예상이 함께 표시됩니다</div>
           <div id="rev2-pipe-chart-area">
             <div class="chart-wrap-sm"><canvas id="rev2-chart-pipe"></canvas></div>
             <div class="rev2-pipe-legend" id="rev2-pipe-legend"></div>
@@ -852,6 +882,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildInvUploadSlots();
   setupInvBulkZone('prev');
   setupInvBulkZone('curr');
+  // restoreInvFiles()가 데이터를 찾으면 즉시 runInvCompare()를 동기 실행하므로,
+  // 그 안에서 호출되는 syncUnmatched100Seen()이 올바른 이전 선택값을 보도록 먼저 복원한다.
+  await restoreUnmatched100Excluded();
+  await restoreUnmatched100Seen();
   restoreInvFiles();
   setupCard('sal', 'prev');
   setupCard('sal', 'curr');
@@ -1555,6 +1589,9 @@ async function clearAllStoredData() {
   PIPELINE_PROB_FILTER = { '100': true, '90': true, '75': true, '50f': true };
   INCLUDE_UNASSIGNED = true;
   INCLUDE_OSTAEK = true;
+  UNMATCHED_100_EXCLUDED = new Set();
+  UNMATCHED_100_SEEN = new Set();
+  UNMATCHED_100_NEW_CODES = [];
   CONFIRMED_H1_REVENUE_ROWS = [];
   CONFIRMED_H1_REVENUE_FILENAME = '';
   CONFIRMED_H1_REVENUE_REGISTERED_AT = null;
@@ -1567,6 +1604,8 @@ async function clearAllStoredData() {
       await idbKeyval.del('pipeline_prob_filter');
       await idbKeyval.del('include_unassigned');
       await idbKeyval.del('include_ostaek');
+      await idbKeyval.del(UNMATCHED_100_EXCLUDED_KEY);
+      await idbKeyval.del(UNMATCHED_100_SEEN_KEY);
       await idbKeyval.del(CONFIRMED_H1_REVENUE_STORAGE_KEY);
     }
   } catch (e) { /* 무시 */ }
@@ -1645,6 +1684,7 @@ function runInvCompare() {
 
   INV_RESULT = { bySection, prevBy, currBy };
   renderInvAnalysis();
+  syncUnmatched100Seen(); // 매칭 판정이 새로 끝났으므로 미매칭 100% 사업 신규 여부를 다시 판정
   document.getElementById('inv-excel-btn').disabled = false;
   document.getElementById('inv-status').textContent = '✓ 분석 완료 — ' + new Date().toLocaleString('ko-KR');
 }
@@ -3248,23 +3288,6 @@ const PROB_SHORT_LABELS = { '100': '100%잔여', '90': '90%', '75': '75%', '50f'
 // 파이프라인 계산에 포함할 확도 구간 — 체크박스로 조절, 기본은 4개 전체 포함
 let PIPELINE_PROB_FILTER = { '100': true, '90': true, '75': true, '50f': true };
 
-// 선택된 구간 구성에 맞춰 "파이프라인 전망은 ...을 합산한 값입니다" 주석 문구를 동적으로 만든다.
-function buildPipelineSourceFootnote() {
-  const nonHundredLabels = PIPELINE_SECTIONS.filter(id => id !== '100' && PIPELINE_PROB_FILTER[id]).map(id => PIPELINE_LABELS[id]).join('·');
-  const hundredIncluded = PIPELINE_PROB_FILTER['100'];
-  let body;
-  if (hundredIncluded && nonHundredLabels) {
-    body = `100% 구간의 미청구 잔여분과 ${nonHundredLabels} 구간의 수주금액을`;
-  } else if (hundredIncluded) {
-    body = `100% 구간의 미청구 잔여분을`;
-  } else if (nonHundredLabels) {
-    body = `${nonHundredLabels} 구간의 수주금액을`;
-  } else {
-    body = '선택된 구간의 수주금액을';
-  }
-  return `※ 파이프라인 전망은 사업별로 직접 입력한 매출 예상월·예상금액을 기준으로, ${body} 합산한 값입니다. 입력하지 않은 사업은 차트에 반영되지 않습니다.`;
-}
-
 // 매출 상세 블록(SALES_PARSED.teamRows)의 실적만으로 프로젝트코드별 누적 매출을 집계 (원 단위)
 // teamRows는 "NO" 헤더 아래 실제 청구 라인만 담고 있어 "매출 예상액" 행은 애초에 포함되지 않는다.
 function getInvoicedAmountByProjectCode() {
@@ -3273,6 +3296,68 @@ function getInvoicedAmountByProjectCode() {
     map[r.code] = (map[r.code] || 0) + (r.total || 0);
   });
   return map;
+}
+
+// ─── 매출 추이: 미매칭 100% 사업 개별 포함/제외 선택 ───────────────────────────
+// 100% 사업인데 매출 실적에서 프로젝트코드를 못 찾은 경우 — 아직 청구 전(포함이 맞음)인지
+// 코드 표기 불일치로 이미 청구된 건(제외해야 이중 계산 방지)인지 시스템이 판단할 수 없어 사용자가 건별로 선택한다.
+let UNMATCHED_100_EXCLUDED = new Set(); // 사용자가 명시적으로 제외한 사업코드(기본값은 포함이므로 제외 목록만 저장)
+let UNMATCHED_100_SEEN = new Set();     // 지금까지 한 번이라도 미매칭으로 나타난 사업코드 — 계속 누적, 절대 삭제하지 않음
+let UNMATCHED_100_NEW_CODES = [];       // 가장 최근 분석에서 새로 나타난 미매칭 사업코드(안내 배너용, 다음 분석 전까지 유지)
+let UNMATCHED_100_LIST_OPEN = false;
+
+const UNMATCHED_100_EXCLUDED_KEY = 'unmatched_100_excluded';
+const UNMATCHED_100_SEEN_KEY = 'unmatched_100_seen';
+
+async function saveUnmatched100Excluded() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set(UNMATCHED_100_EXCLUDED_KEY, Array.from(UNMATCHED_100_EXCLUDED)); }
+  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+async function restoreUnmatched100Excluded() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get(UNMATCHED_100_EXCLUDED_KEY);
+    if (Array.isArray(saved)) UNMATCHED_100_EXCLUDED = new Set(saved);
+  } catch (e) { /* 저장 데이터가 깨졌으면 빈 상태(전체 포함)로 시작 */ }
+}
+async function saveUnmatched100Seen() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.set(UNMATCHED_100_SEEN_KEY, Array.from(UNMATCHED_100_SEEN)); }
+  catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+async function restoreUnmatched100Seen() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get(UNMATCHED_100_SEEN_KEY);
+    if (Array.isArray(saved)) UNMATCHED_100_SEEN = new Set(saved);
+  } catch (e) { /* 저장 데이터가 깨졌으면 빈 상태로 시작 */ }
+}
+
+// 인벤토리 재분석(runInvCompare)이 끝날 때마다 호출 — 이번에 새로 나타난 미매칭 사업코드를 판정하고 SEEN 집합을 갱신한다.
+// unmatched 목록 자체가 스코프와 무관하므로 항상 '본부' 스코프로 조회한다.
+function syncUnmatched100Seen() {
+  const cand = getPipelineCandidateRows('본부');
+  const currentCodes = (cand ? cand.unmatched : []).map(u => u.code);
+  UNMATCHED_100_NEW_CODES = currentCodes.filter(c => !UNMATCHED_100_SEEN.has(c));
+  currentCodes.forEach(c => UNMATCHED_100_SEEN.add(c));
+  console.log('[미매칭 100%] 이번 분석 미매칭 사업코드:', currentCodes, '/ 신규:', UNMATCHED_100_NEW_CODES);
+  saveUnmatched100Seen();
+}
+
+function toggleUnmatched100(code, included) {
+  if (included) UNMATCHED_100_EXCLUDED.delete(code);
+  else UNMATCHED_100_EXCLUDED.add(code);
+  saveUnmatched100Excluded();
+  renderSalesTrend();
+}
+
+function selectAllUnmatched100(included) {
+  const forecastData = computeForecastSummary(SALES_SCOPE);
+  const list = (forecastData && forecastData.unmatched) || [];
+  list.forEach(u => { if (included) UNMATCHED_100_EXCLUDED.delete(u.code); else UNMATCHED_100_EXCLUDED.add(u.code); });
+  saveUnmatched100Excluded();
+  renderSalesTrend();
 }
 
 // 파이프라인 후보 사업 목록(100% 잔여분 + 90/75/50%(F) 전액)을 구성.
@@ -3315,8 +3400,11 @@ function getPipelineCandidateRows(scope) {
       remainder = Math.max(0, order - invoicedWon / 1000000); // 원 -> 백만원
     } else {
       unmatchedCount++;
-      unmatched.push({ code, name: r['프로젝트명'] || '', amountEok: millionToEok(order) });
-      remainder = order; // 매칭 실패 시 차감 없이 전액
+      // 사용자가 [상세보기]에서 건별로 포함/제외를 선택할 수 있음(기본값: 포함) — 아직 청구 전인지, 코드 표기 불일치로
+      // 이미 청구됐는지 시스템은 판단할 수 없어 사용자 판단에 맡긴다.
+      const included = !UNMATCHED_100_EXCLUDED.has(code);
+      unmatched.push({ code, name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', amountMillion: order, amountEok: millionToEok(order), included });
+      remainder = included ? order : 0; // 제외 선택 시 잔여분 0으로 처리(이중 계산 방지)
     }
     if (remainder > AMT_EPS && decideScope(r, remainder, '100')) { // 잔여분이 0보다 큰 건만 후보에 포함
       rows.push({
@@ -3480,10 +3568,12 @@ function computeForecastSummary(scope) {
   const filteredRows = cand.rows.filter(r => PIPELINE_PROB_FILTER[r.section]);
 
   const monthlyMillion   = {}; // 1~12 (2026년만) -> 합계
-  const bySectionMillion = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 입력분만, 체크된 구간만
+  const bySectionMillion = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 입력분만(1~12월 전체), 체크된 구간만
+  const bySectionMillionH2 = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 7~12월분만 — "하반기 예상실적" 카드/검증 기준
   let inputCount = 0, noInputCount = 0, inputTotalMillion = 0, noInputAmountMillion = 0;
   let autoCount = 0, manualCount = 0;
   let excludedCount = 0, excludedMillion = 0; // 2026년이 아닌(주로 2027년 이후 매출청구일) 건 — 올해 차트에서 제외
+  let h2TotalMillion = 0, h2InputCount = 0; // 하반기(7~12월) 매출예상 합계·건수(사업 단위) — 카드④ 기준값
 
   filteredRows.forEach(c => {
     const entries = (REVENUE_FORECAST[c.code] || []).filter(e => e && e.월 && Number(e.금액) > 0);
@@ -3495,6 +3585,7 @@ function computeForecastSummary(scope) {
     inputCount++;
     if (entries.some(e => !e.auto)) manualCount++; else autoCount++;
 
+    let hasH2 = false;
     entries.forEach(e => {
       const parts = e.월.split('-');
       const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
@@ -3503,19 +3594,25 @@ function computeForecastSummary(scope) {
         monthlyMillion[m] = (monthlyMillion[m] || 0) + amt;
         bySectionMillion[c.section] = (bySectionMillion[c.section] || 0) + amt;
         inputTotalMillion += amt;
+        if (m >= 7) {
+          bySectionMillionH2[c.section] = (bySectionMillionH2[c.section] || 0) + amt;
+          h2TotalMillion += amt;
+          hasH2 = true;
+        }
       } else {
         excludedCount++;
         excludedMillion += amt;
       }
     });
+    if (hasH2) h2InputCount++;
   });
 
-  // ─── 자체 검증: 체크된 구간의 2026년 합계 vs 파이프라인 카드(inputTotalMillion), 월별 합계 vs 파이프라인 카드 ───
+  // ─── 자체 검증: 구간별(7~12월) 합계·월별(7~12월) 합계가 하반기 예상실적 총액과 일치하는지 확인 ───
   const VALIDATION_EPS = 0.05; // 백만원
-  const sectionSum2026 = PIPELINE_SECTIONS.reduce((s, id) => s + (bySectionMillion[id] || 0), 0);
-  const monthlySum2026 = Object.values(monthlyMillion).reduce((s, v) => s + v, 0);
-  const sectionMatch = Math.abs(sectionSum2026 - inputTotalMillion) < VALIDATION_EPS;
-  const monthlyMatch = Math.abs(monthlySum2026 - inputTotalMillion) < VALIDATION_EPS;
+  const sectionSumH2 = PIPELINE_SECTIONS.reduce((s, id) => s + (bySectionMillionH2[id] || 0), 0);
+  const monthlySumH2 = [7, 8, 9, 10, 11, 12].reduce((s, m) => s + (monthlyMillion[m] || 0), 0);
+  const sectionMatch = Math.abs(sectionSumH2 - h2TotalMillion) < VALIDATION_EPS;
+  const monthlyMatch = Math.abs(monthlySumH2 - h2TotalMillion) < VALIDATION_EPS;
 
   console.log('[검증] 구간별 전체/2026년/2027년이후 (백만원)', PIPELINE_SECTIONS.map(id => ({
     구간: PIPELINE_LABELS[id], 건수: sectionCounts[id],
@@ -3523,16 +3620,16 @@ function computeForecastSummary(scope) {
     '2026년': Math.round(sectionAmounts2026[id] * 10) / 10,
     '2027년이후': Math.round(sectionAmountsExcluded[id] * 10) / 10,
   })));
-  console.log('[검증] 4구간 2026년 합계(체크된 구간만):', sectionSum2026, '백만 vs 파이프라인 카드:', inputTotalMillion, '백만 →', sectionMatch ? '일치' : `불일치(차이 ${Math.round((sectionSum2026 - inputTotalMillion) * 10) / 10}백만)`);
-  console.log('[검증] 월별 합계(12개월, 체크된 구간만):', monthlySum2026, '백만 vs 파이프라인 카드:', inputTotalMillion, '백만 →', monthlyMatch ? '일치' : `불일치(차이 ${Math.round((monthlySum2026 - inputTotalMillion) * 10) / 10}백만)`);
+  console.log('[검증] 확도별 하반기(7~12월) 합계(체크된 구간만):', sectionSumH2, '백만 vs 하반기 예상실적:', h2TotalMillion, '백만 →', sectionMatch ? '일치' : `불일치(차이 ${Math.round((sectionSumH2 - h2TotalMillion) * 10) / 10}백만)`);
+  console.log('[검증] 월별(7~12월) 합계(체크된 구간만):', monthlySumH2, '백만 vs 하반기 예상실적:', h2TotalMillion, '백만 →', monthlyMatch ? '일치' : `불일치(차이 ${Math.round((monthlySumH2 - h2TotalMillion) * 10) / 10}백만)`);
 
   return {
     candidates: filteredRows, matchedCount: cand.matchedCount, unmatchedCount: cand.unmatchedCount, unmatched: cand.unmatched,
     unassignedRows: cand.unassignedRows,
-    monthlyMillion, bySectionMillion, inputCount, noInputCount, inputTotalMillion, noInputAmountMillion,
-    autoCount, manualCount, excludedCount, excludedMillion,
+    monthlyMillion, bySectionMillion, bySectionMillionH2, inputCount, noInputCount, inputTotalMillion, noInputAmountMillion,
+    autoCount, manualCount, excludedCount, excludedMillion, h2TotalMillion, h2InputCount,
     sectionCounts, sectionAmounts, sectionAmounts2026, sectionAmountsExcluded,
-    sectionSum2026, monthlySum2026, sectionMatch, monthlyMatch,
+    sectionSumH2, monthlySumH2, sectionMatch, monthlyMatch,
   };
 }
 
@@ -3573,53 +3670,100 @@ function computeSalesSummary(scope, series, forecastData) {
   };
 }
 
+// 요약 카드 6개(①연간목표 ②26년 총 누적예상 실적 ③상반기 누적실적 ④하반기 예상실적 ⑤목표 대비 증감 ⑥예상 달성률) 계산.
+// ②⑤⑥은 반드시 연간 목표(annualTargetEok) 기준으로 계산한다 — 상반기 누적 목표로 나누지 않는다.
+function computeSummaryCardsV2(scope, forecastData) {
+  const annualTargetEok = millionToEok(annualTargetTotal(scope));
+  const sd = getScopeData(scope);
+
+  let h1Won = 0, h1LastMonth = 0;
+  for (let m = 1; m <= 6; m++) {
+    if (sd && sd.months[m]) { h1Won += sd.months[m].total; h1LastMonth = m; }
+  }
+  const h1Eok = wonToEok(h1Won);
+
+  const h2Million = forecastData ? forecastData.h2TotalMillion : 0;
+  const h2InputCount = forecastData ? forecastData.h2InputCount : 0;
+  const h2Eok = millionToEok(h2Million);
+
+  const totalExpectedEok = h1Eok + h2Eok; // ② 26년 총 누적예상 실적 = 상반기 확정 + 하반기 매출예상
+  const deltaEok = totalExpectedEok - annualTargetEok; // ⑤ 목표 대비 증감 = ② - ①
+  const achieveRate = annualTargetEok > 0 ? (totalExpectedEok / annualTargetEok * 100) : 0; // ⑥ = ② ÷ ① × 100
+
+  console.log('[⑤⑥ 계산]', {
+    상반기_확정_억: Math.round(h1Eok * 10) / 10, 하반기_예상_억: Math.round(h2Eok * 10) / 10,
+    '②_총_누적예상_억': Math.round(totalExpectedEok * 10) / 10, '①_연간목표_억': Math.round(annualTargetEok * 10) / 10,
+    '⑤_목표대비증감_억': Math.round(deltaEok * 10) / 10, '⑥_예상달성률_%': Math.round(achieveRate * 10) / 10,
+  });
+
+  return { annualTargetEok, h1Eok, h1LastMonth, h2Eok, h2InputCount, totalExpectedEok, deltaEok, achieveRate };
+}
+
 function renderSalesSummary(scope, series, forecastData) {
-  const s = computeSalesSummary(scope, series, forecastData);
-  const pipeStr = s.pipelineEok != null ? s.pipelineEok.toFixed(1) + '억' : '-';
-  const pipeSub = s.forecastData
-    ? `입력 ${s.forecastData.inputCount}건 · 미입력 ${s.forecastData.noInputCount}건(${millionToEok(s.forecastData.noInputAmountMillion).toFixed(1)}억)`
-    : '';
+  const s = computeSummaryCardsV2(scope, forecastData);
 
-  const shortfallPositive = s.shortfallEok >= 0;
-  const shortfallLabel = shortfallPositive ? '목표 대비 부족액' : '목표 대비 초과액';
-  const shortfallColor = shortfallPositive ? 'var(--down)' : 'var(--up)';
-  const shortfallStr   = Math.abs(s.shortfallEok).toFixed(1) + '억';
+  const deltaPositive = s.deltaEok >= 0;
+  const deltaColor = deltaPositive ? 'var(--up)' : 'var(--down)';
+  const deltaStr = (deltaPositive ? '+' : '-') + Math.abs(s.deltaEok).toFixed(1) + '억';
 
-  const confirmedSub = s.lastConfirmedIdx >= 0 ? `2026년 ${series[s.lastConfirmedIdx].month}월까지 확정` : '';
-  const combinedSub = s.forecastIdx >= 0
-    ? `확정 ${s.confirmedEok.toFixed(1)} + 예상 ${s.forecastMonthEok.toFixed(1)} + 파이프라인 ${(s.pipelineEok || 0).toFixed(1)}`
-    : '';
+  const h1Sub = s.h1LastMonth > 0 ? `2026년 ${s.h1LastMonth}월까지 확정` : '확정 실적 없음';
+  const h2Sub = `입력 ${s.h2InputCount}건`;
 
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
-    <div class="summary-card"><div class="s-label">누적 실적</div><div class="s-value">${s.confirmedEok.toFixed(1)}억</div>${confirmedSub ? `<div class="s-sub">${confirmedSub}</div>` : ''}</div>
-    <div class="summary-card"><div class="s-label">파이프라인(입력 기준)</div><div class="s-value">${pipeStr}</div>${pipeSub ? `<div class="s-sub">${pipeSub}</div>` : ''}</div>
-    <div class="summary-card"><div class="s-label">실적+파이프라인 합계</div><div class="s-value">${s.combinedEok.toFixed(1)}억</div>${combinedSub ? `<div class="s-sub">${combinedSub}</div>` : ''}</div>
-    <div class="summary-card"><div class="s-label">${shortfallLabel}</div><div class="s-value" style="color:${shortfallColor}">${shortfallStr}</div></div>
-    <div class="summary-card"><div class="s-label">누적 달성률</div><div class="s-value" style="color:${rateColor(s.cumRate)}">${s.cumRate.toFixed(1)}%</div></div>
+    <div class="summary-card summary-card-highlight"><div class="s-label">26년 총 누적예상 실적</div><div class="s-value s-value-xl">${s.totalExpectedEok.toFixed(1)}억</div></div>
+    <div class="summary-card summary-card-muted"><div class="s-label">상반기 누적실적</div><div class="s-value">${s.h1Eok.toFixed(1)}억</div><div class="s-sub">${h1Sub}</div></div>
+    <div class="summary-card summary-card-muted"><div class="s-label">하반기 예상실적</div><div class="s-value">${s.h2Eok.toFixed(1)}억</div><div class="s-sub">${h2Sub}</div></div>
+    <div class="summary-card"><div class="s-label">목표 대비 증감</div><div class="s-value" style="color:${deltaColor}">${deltaStr}</div></div>
+    <div class="summary-card"><div class="s-label">예상 달성률</div><div class="s-value" style="color:${rateColor(s.achieveRate)}">${s.achieveRate.toFixed(1)}%</div><div class="s-sub">연간 목표 대비</div></div>
   `;
 }
 
 function toggleUnmatchedDetail(e) {
   e.preventDefault();
-  const list = document.getElementById('rev2-unmatched-list');
+  const panel = document.getElementById('rev2-unmatched-panel');
   const link = document.getElementById('rev2-unmatched-toggle');
-  const open = list.style.display !== 'none';
-  list.style.display = open ? 'none' : '';
-  link.textContent = open ? '[상세보기]' : '[접기]';
+  UNMATCHED_100_LIST_OPEN = !UNMATCHED_100_LIST_OPEN;
+  panel.style.display = UNMATCHED_100_LIST_OPEN ? '' : 'none';
+  link.textContent = UNMATCHED_100_LIST_OPEN ? '[접기]' : '[상세보기]';
 }
 
-function renderUnmatchedNotice(pipelineData) {
-  const notice = document.getElementById('rev2-unmatched-notice');
-  if (!pipelineData || pipelineData.unmatchedCount === 0) { notice.style.display = 'none'; return; }
-  notice.style.display = '';
-  document.getElementById('rev2-unmatched-text').textContent =
-    `※ 매출 실적과 매칭되지 않은 100% 프로젝트 ${pipelineData.unmatchedCount}건은 수주금액 전액을 잔여분으로 계산했습니다`;
-  document.getElementById('rev2-unmatched-list').innerHTML = pipelineData.unmatched.map(u =>
-    `<div class="rev2-unmatched-row"><span class="code">${escHtml(u.code)}</span><span class="name">${escHtml(u.name)}</span><span class="amt">${u.amountEok.toFixed(1)}억</span></div>`
-  ).join('');
-  document.getElementById('rev2-unmatched-list').style.display = 'none';
-  document.getElementById('rev2-unmatched-toggle').textContent = '[상세보기]';
+function renderUnmatchedFootnote(forecastData) {
+  const wrapEl = document.getElementById('rev2-unmatched-footnote');
+  if (!forecastData || forecastData.unmatchedCount === 0) { wrapEl.style.display = 'none'; return; }
+  wrapEl.style.display = '';
+  document.getElementById('rev2-unmatched-footnote-text').textContent =
+    `※ 매출 실적과 매칭되지 않은 100% 사업 ${forecastData.unmatchedCount}건은 수주금액 전액을 잔여분으로 계산했습니다. `;
+  renderUnmatchedPanel(forecastData);
+}
+
+function renderUnmatchedPanel(forecastData) {
+  const list = (forecastData && forecastData.unmatched) || [];
+
+  const newBannerEl = document.getElementById('rev2-unmatched-newbanner');
+  const newInList = list.filter(u => UNMATCHED_100_NEW_CODES.includes(u.code));
+  if (newInList.length > 0) {
+    newBannerEl.textContent = `이번 주 새로 추가된 미매칭 사업 ${newInList.length}건이 있습니다.`;
+    newBannerEl.style.display = '';
+  } else {
+    newBannerEl.style.display = 'none';
+  }
+
+  const includedList = list.filter(u => u.included);
+  const includedTotalEok = millionToEok(includedList.reduce((s, u) => s + u.amountMillion, 0));
+  document.getElementById('rev2-unmatched-summarybar').textContent =
+    `${list.length}건 중 ${includedList.length}건 포함 · ${includedTotalEok.toFixed(1)}억`;
+
+  document.getElementById('rev2-unmatched-tbody').innerHTML = list.length
+    ? list.map(u => `
+      <tr>
+        <td><input type="checkbox" ${u.included ? 'checked' : ''} onchange="toggleUnmatched100('${escHtml(u.code).replace(/'/g, "\\'")}', this.checked)"></td>
+        <td class="rev2-code">${escHtml(u.code)}</td>
+        <td class="rev2-name" title="${escHtml(u.name)}">${escHtml(u.name)}</td>
+        <td>${escHtml(u.sales)}</td>
+        <td style="text-align:right">${fmtAmt(u.amountMillion)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;color:var(--text-sub);padding:16px">미매칭 사업이 없습니다.</td></tr>`;
 }
 
 // ─── 매출 추이: 차트 렌더링 (Chart.js) ────────────────────────────────────────
@@ -3794,7 +3938,7 @@ function renderSalesChart1(scope, series, forecastData) {
       pointBackgroundColor: 'rgba(74,158,255,0.9)' });
   }
   if (pipelineArr) {
-    datasets.push({ label: '파이프라인 반영 전망', data: pipelineArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
+    datasets.push({ label: '실적 예상', data: pipelineArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
       borderWidth: 2, borderDash: [5, 4], fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 });
   }
   datasets.push({ label: '누적 목표', data: cumTargetEok, borderColor: '#e34948', backgroundColor: 'transparent',
@@ -3850,7 +3994,7 @@ function renderSalesChart1(scope, series, forecastData) {
   }
   if (hasInput) {
     const sectionLabelStr = PIPELINE_SECTIONS.filter(id => PIPELINE_PROB_FILTER[id]).map(id => PROB_SHORT_LABELS[id]).join('·');
-    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>파이프라인 ${pipelineEok.toFixed(1)}억 (${sectionLabelStr}, 점선)</span>`;
+    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>실적 예상 ${pipelineEok.toFixed(1)}억 (${sectionLabelStr}, 점선)</span>`;
   }
   legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#e34948"></span>누적 목표 ${annualTargetEok.toFixed(1)}억</span>`;
   document.getElementById('rev2-main-legend').innerHTML = legendHtml;
@@ -3877,25 +4021,25 @@ function renderSalesChart1(scope, series, forecastData) {
     noticeEl.textContent = '포함할 구간을 하나 이상 선택해주세요';
     noticeEl.style.display = '';
   } else if (!forecastData) {
-    noticeEl.textContent = '인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다';
+    noticeEl.textContent = '인벤토리 비교 탭에서 먼저 분석하면 매출예상이 함께 표시됩니다';
     noticeEl.style.display = '';
   } else if (!hasInput) {
-    noticeEl.textContent = '매출 예상을 입력하면 파이프라인 전망이 표시됩니다';
+    noticeEl.textContent = '매출 예상을 입력하면 매출예상 추이가 표시됩니다';
     noticeEl.style.display = '';
   } else {
     noticeEl.style.display = 'none';
   }
 
-  renderUnmatchedNotice(forecastData);
+  renderUnmatchedFootnote(forecastData);
 
   const excludedEl = document.getElementById('rev2-excluded-footnote');
   if (forecastData && forecastData.excludedCount > 0) {
-    excludedEl.textContent = `※ 매출청구일이 2027년 이후인 ${forecastData.excludedCount}건(${millionToEok(forecastData.excludedMillion).toFixed(1)}억)은 올해 전망에서 제외되었습니다.`;
+    excludedEl.textContent = `※ 매출청구일이 2027년 이후인 ${forecastData.excludedCount}건(${millionToEok(forecastData.excludedMillion).toFixed(1)}억)은 올해 전망에서 제외했습니다.`;
+    excludedEl.style.display = '';
   } else {
-    excludedEl.textContent = '※ 매출청구일이 2027년 이후인 사업은 올해 전망에서 제외됩니다.';
+    excludedEl.style.display = 'none';
   }
 
-  document.getElementById('rev2-pipeline-source-footnote').textContent = buildPipelineSourceFootnote();
   document.getElementById('rev2-remainder-footnote').style.display = PIPELINE_PROB_FILTER['100'] ? '' : 'none';
 
   const unassignedFootnoteEl = document.getElementById('rev2-unassigned-footnote');
@@ -3919,8 +4063,8 @@ function renderPipelineCompositionChart(scope, forecastData) {
     notice.textContent = allProbUnchecked
       ? '포함할 구간을 하나 이상 선택해주세요'
       : (!forecastData
-        ? '인벤토리 비교 탭에서 먼저 분석하면 파이프라인 전망이 함께 표시됩니다'
-        : '매출 예상을 입력하면 파이프라인 전망이 표시됩니다');
+        ? '인벤토리 비교 탭에서 먼저 분석하면 매출예상이 함께 표시됩니다'
+        : '매출 예상을 입력하면 매출예상 추이가 표시됩니다');
     notice.style.display = '';
     area.style.display = 'none';
     return;
@@ -4195,11 +4339,11 @@ function renderValidationLine(forecastData) {
   if (!el) return;
   if (!forecastData) { el.textContent = ''; return; }
   const sectionPart = forecastData.sectionMatch
-    ? '구간 합계 = 파이프라인 카드 ✓'
-    : `<span style="color:var(--del)">구간 합계 ≠ 파이프라인 카드 (차이 ${millionToEok(Math.abs(forecastData.sectionSum2026 - forecastData.inputTotalMillion)).toFixed(1)}억)</span>`;
+    ? '확도 합계 = 하반기 예상 ✓'
+    : `<span style="color:var(--del)">확도 합계 ≠ 하반기 예상 (차이 ${millionToEok(Math.abs(forecastData.sectionSumH2 - forecastData.h2TotalMillion)).toFixed(1)}억)</span>`;
   const monthlyPart = forecastData.monthlyMatch
-    ? '월별 합계 = 파이프라인 카드 ✓'
-    : `<span style="color:var(--del)">월별 합계 ≠ 파이프라인 카드 (차이 ${millionToEok(Math.abs(forecastData.monthlySum2026 - forecastData.inputTotalMillion)).toFixed(1)}억)</span>`;
+    ? '월별 합계 = 하반기 예상 ✓'
+    : `<span style="color:var(--del)">월별 합계 ≠ 하반기 예상 (차이 ${millionToEok(Math.abs(forecastData.monthlySumH2 - forecastData.h2TotalMillion)).toFixed(1)}억)</span>`;
   el.innerHTML = `검증: ${sectionPart} / ${monthlyPart}`;
 }
 
