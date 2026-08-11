@@ -791,6 +791,47 @@
 
 ---
 
+### 2026-08-11 — 매출 예상 입력 적용 버튼 방식 변경 및 확인 필요 항목 우선 노출 (27차 작업)
+
+#### 목표
+매출 추이 탭 하단(주석·보조 차트·매출 예상 입력) 영역 개편. 간격이 답답했던 문제를 CSS로 해소하고, 지금까지 입력 즉시 반영되던 "매출 예상 입력" 표를 [적용] 버튼을 눌러야 실제 계산에 반영되는 명시적 방식으로 전환(중요 데이터 실수 방지). 매출예상월 미지정/예상금액 0/매출실적 미매칭 건을 "확인 필요" 영역으로 상단에 모아 우선 노출.
+
+#### 1~2. 간격 조정 및 용어 정리
+- `#rev2-content`를 `display:flex; flex-direction:column; gap:24px`로 변경 — 기존엔 `.chart-card` 사이에 별도 여백 규칙이 전혀 없어 카드가 맞닿아 있었음(스크린샷 없이 코드 감사로 발견). 이 변경만으로 "카드 사이 16px 이상"과 "주석-보조차트 24px 이상" 요구사항이 동시에 충족됨. `.rev2-summary-row`/`.rev2-validation-line`의 기존 개별 margin은 flex-gap과 중복되므로 0으로 정리.
+- `.rev2-footnote`에 `line-height:1.9`, `margin-top`을 10px→13px로 소폭 확대. `#rev2-pipe-card`에 `padding-bottom:18px` 오버라이드 추가(공용 `.chart-card`는 16px라 전역 변경 대신 이 카드만 스코프).
+- 보조 차트 제목·범례 구간명은 26차 작업에서 이미 "수주확도별 매출예상 구성"으로 변경 완료. 이번엔 그때 놓쳤던 **막대 자체의 데이터셋 라벨**("파이프라인 XX억")을 "실적 예상 XX억"으로 추가 수정(`renderPipelineCompositionChart`의 `labels:` 배열).
+
+#### 3. 매출 예상 입력 — 적용 버튼 방식
+- **임시본(draft) 구조 도입**: `REVENUE_FORECAST_DRAFT`(화면 입력칸이 직접 수정하는 사본) + `FORECAST_DIRTY_CODES`(사용자가 draft에서 실제로 건드린 사업코드 Set) 신규. 화면의 모든 입력(`updateForecastEntry`/`addForecastEntry`/`removeForecastEntry`)은 이제 `REVENUE_FORECAST_DRAFT`만 수정하고 `renderForecastSection()`만 다시 그림 — 요약카드·메인차트·보조차트·체크박스 라벨·월별 팝업이 참조하는 `REVENUE_FORECAST`(live)는 전혀 건드리지 않아 적용 전까지 다른 화면에 영향이 없음.
+- **dirty 판정을 diff가 아닌 명시적 Set으로 설계**: 처음엔 "draft와 live를 통째로 비교"하는 방식을 고려했으나, 인벤토리 파일을 새로 올려 자동반영(`mergeAutoForecastFromInventory`)이 live를 변경하면 사용자가 손대지 않은 항목까지 "다르다"고 오판하는 문제가 있어 폐기. 대신 `FORECAST_DIRTY_CODES`를 사용자 입력 시점에만 명시적으로 추가하고, `syncForecastDraftFromLive()`(매 렌더링마다 호출)가 dirty가 아닌 코드만 live→draft로 동기화 — 외부 변경과 사용자 편집이 서로 덮어쓰지 않도록 분리.
+- **[적용]**(`applyForecastChanges`): dirty 코드만 골라 `REVENUE_FORECAST_DRAFT`→`REVENUE_FORECAST`로 복사(둘 다 비어있는 항목은 삭제), 저장 후 `FORECAST_DIRTY_CODES.clear()`, `renderSalesTrend()` 전체 재실행. 적용 직전/직후의 하반기 예상실적(`h2TotalMillion`)과 수정된 사업코드별 변경 전/후 값을 `console.log`. 미적용 시 비활성화, dirty가 있으면 활성화 + `.rev2-forecast-apply-highlight`(accent 글로우) 부여.
+- **[취소]**(`cancelForecastChanges`): dirty 코드만 draft를 live 값으로 되돌리고 Set을 비움.
+- **[초기화]**(`resetForecastToAuto`): confirm 후 `REVENUE_FORECAST = {}` + `mergeAutoForecastFromInventory()` 재실행(파일의 매출 목록 시트에서 자동값을 처음부터 다시 구성) — 이 함수가 내부적으로 저장+`renderSalesTrend()`를 호출하므로 draft도 자동 동기화됨.
+- **미적용 상태 안내**: 요약 바 아래 `#rev2-forecast-dirty-banner`(주황) "수정된 항목 N건 — [적용]을 누르지 않으면 반영되지 않습니다". 수정된 입력칸은 `.rev2-dirty-cell`(주황 테두리) — `isForecastEntryDirty(code, idx)`가 코드가 dirty일 때만 항목 단위로 live/draft를 비교해 정밀하게 판정.
+- **이탈 방지**: `switchTab(t)`에 가드 추가 — 현재 탭이 'revenue-trend'이고 이동하려는 탭이 다르며 dirty가 있으면 confirm, 취소 시 탭 전환 자체를 막고(`return`) 그대로 머무름, 확인 시 `cancelForecastChanges()`로 draft를 버린 뒤 이동. `window.beforeunload`에 dirty일 때 `preventDefault()`하는 리스너 추가(브라우저 기본 이탈 경고).
+
+#### 4. 확인 필요 항목 우선 노출
+- `candidateReviewReasons(c, unmatchedCodeSet)` — draft 기준으로 판정(적용 전이라도 값을 채우면 즉시 목록에서 빠지도록): entries 중 `월` 없는 게 있으면 "월 미지정", `월`은 있는데 `금액`이 빈값/0이면 "금액 없음", 해당 사업코드가 26차 작업의 미매칭-100 목록에 있으면 "미매칭" — 완전 미입력(entries.length===0)은 별도의 "미입력" 집계로 남기고 확인 필요로 분류하지 않음(일반적/예상된 상태이므로).
+- `renderForecastTableRows`가 필터링된 후보를 확인 필요/일반 두 그룹으로 나눠 각각 독립된 `<table>`(헤더는 동일 구조 중복 배치)에 렌더링. 확인 필요 영역(`#rev2-forecast-review-section`, 주황 배경)은 0건이면 완전히 숨김, 각 행에 사유 배지(`.rev2-review-badge`, 다건이면 여러 개) 표시.
+- "전체 사업 N건 [더보기 ▾]" 버튼(`#rev2-forecast-more-btn`) — 기본 접힘(`FORECAST_NORMAL_EXPANDED`, idb 저장 없이 메모리 변수라 새로고침/탭 재진입마다 항상 접힘으로 시작). 검색어·구분필터·확도필터 중 하나라도 활성화되어 있으면 `FORECAST_NORMAL_EXPANDED`와 무관하게 자동 펼침, 검색어를 지우면(수동으로 편 적 없다면) 다시 접힘.
+- 요약 바를 "전체 N건 · 자동반영 N건 · 수기입력 N건 · 확인필요 N건"으로 변경(기존 "미입력 N건" 세그먼트 제거, 확인필요는 `var(--del)` 주황).
+
+#### 5. 연동 검증
+- `computeForecastSummary`(26차 작업에서 이미 `h2TotalMillion`/`sectionSumH2`/`monthlySumH2`/`sectionMatch`/`monthlyMatch` 계산 및 콘솔 로그 보유)를 그대로 재사용 — `applyForecastChanges()` 이후 `renderSalesTrend()`가 이를 다시 호출하므로 "확도별 합계 = 하반기 예상실적 일치 여부"/"월별 합계 = 하반기 예상실적 일치 여부" 로그가 적용 직후 자동으로 다시 찍힘(중복 구현 없음). 화면 하단 `#rev2-validation-line` 문구("검증: 확도 합계 = 하반기 예상 ✓ / 월별 합계 = 하반기 예상 ✓")도 26차 작업 그대로 재사용.
+- **데이터 참조 통일**: 요약 카드(`computeSummaryCardsV2`)·메인 차트(`renderSalesChart1`)·보조 차트(`renderPipelineCompositionChart`)·체크박스 라벨(`renderProbFilterUI`)·월별 팝업(`buildMonthForecastList`) 모두 `renderSalesTrend()` 한 번의 호출에서 계산된 동일한 `forecastData`(`computeForecastSummary(SALES_SCOPE)`) 객체를 인자로 전달받아 사용하는 기존 구조를 그대로 유지 — 이번 작업에서 별도의 원본 재파싱 경로를 추가하지 않았으므로 기준 불일치 위험이 구조적으로 없음(신규 코드 없이 기존 아키텍처 확인으로 충족).
+
+#### 6. 저장
+- 수기 입력값 저장 방식(사업코드 키, idb `revenue_forecast`)은 기존 그대로 — 이번 변경은 "언제 저장되는가"(입력 즉시 → 적용 시점)만 바뀌었을 뿐 저장 위치·키·구조는 무변경.
+
+#### 검증
+- 100% 구간 3건(매칭 1 + 미매칭 2) 등 6개 후보 픽스처로 검증. 페이지 진입 시 "확인 필요 2건"(미매칭 B·C만, 완전 미입력인 A/D/E/F는 제외됨)과 "전체 사업 4건"(기본 접힘)이 정확히 분리되는지 확인.
+- B의 월/금액을 입력하면(적용 전) 사유 배지가 "월 미지정"+"금액 없음"에서 "미매칭"만 남고, 카드·체크박스 라벨·검증 라인은 전혀 변하지 않는지(적용 전 격리) 직접 확인 — [취소] 시 draft가 정확히 원상 복구(빈 값)되고 dirty가 0으로, [적용] 시 카드 6개(②42.0억/④12.0억/⑤-778.7억/⑥5.1%)·100% 체크박스 라벨(8.0억)·검증 라인이 모두 동시에 갱신되는지 확인. 콘솔에 "[매출 예상 적용] 수정된 사업"과 "하반기 예상실적 — 변경 전: 0 백만 → 변경 후: 1200 백만" 로그가 정확히 출력되는지 확인.
+- 이탈 방지: `switchTab('revenue-trend')`로 진입한 상태에서 dirty를 만든 뒤 다른 탭으로 이동 시도 — confirm 취소 시 탭에 그대로 머물고 dirty 유지, confirm 수락 시 이동하며 draft가 취소(원복)되는지 확인. `beforeunload` 이벤트를 직접 dispatch해 dirty일 때 `preventDefault()`가 호출되는지 확인.
+- [초기화] confirm 수락 시 `REVENUE_FORECAST`/`REVENUE_FORECAST_DRAFT`/dirty가 모두 파일 기준 상태로 정리되는지 확인.
+- 검색어 입력 시 "전체 사업" 영역이 자동으로 펼쳐지고 결과가 필터링되며, 검색어를 지우면(수동으로 편 적 없으므로) 다시 접히는지, 수동으로 [더보기]를 누르면 펼쳐지는지 확인. 페이지 새로고침 후 `FORECAST_NORMAL_EXPANDED`가 항상 `false`로 시작하고, `REVENUE_FORECAST_DRAFT`가 복원된 `REVENUE_FORECAST`와 정확히 일치(dirty 없음)하는지 확인. 전 과정에서 콘솔 에러 없음.
+
+---
+
 ## 환경 정보
 - OS: Windows 10
 - Node.js: v24.16.0
