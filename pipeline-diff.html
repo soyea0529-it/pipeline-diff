@@ -430,6 +430,7 @@
   .rev2-ostaek-note { font-size: 11px; color: var(--text-sub); margin-left: 6px; }
   .rev2-h1h2-summary-bar { font-size: 13px; color: var(--text-sub); margin: 4px 0 12px; }
   .rev2-h1-status-badge { font-size: 12px; font-weight: 500; margin-left: 10px; }
+  .rev2-validation-line { font-size: 11px; color: var(--text-sub); margin-top: 14px; }
 
   /* ── 매출 예상 사업 목록 팝업 ───────────────────────────────────────── */
   .rev2-month-popup-overlay {
@@ -723,6 +724,8 @@
             <div class="rev2-pipe-legend" id="rev2-pipe-legend"></div>
           </div>
         </div>
+
+        <div class="rev2-validation-line" id="rev2-validation-line"></div>
       </div>
 
       <div class="chart-card" id="rev2-forecast-card">
@@ -3454,15 +3457,30 @@ function computeForecastSummary(scope) {
   const cand = getPipelineCandidateRows(scope);
   if (!cand) return null;
 
-  // 확도 구간 체크박스 라벨용: PIPELINE_PROB_FILTER와 무관한 구간별 전체 금액
-  const sectionAmounts = { '100': 0, '90': 0, '75': 0, '50f': 0 };
-  cand.rows.forEach(r => { sectionAmounts[r.section] = (sectionAmounts[r.section] || 0) + r.amountMillion; });
+  // 확도 구간 체크박스 라벨용: PIPELINE_PROB_FILTER(자기 자신의 체크 상태)와 무관하게 전체 후보 기준으로
+  // 전체(원본 수주금액) / 2026년 입력분 / 2027년 이후 입력분을 각각 집계한다.
+  // 체크박스 라벨은 반드시 "2026년" 값을 써야 차트·요약카드·월별 팝업이 쓰는 값과 기준이 일치한다.
+  const sectionCounts   = { '100': 0, '90': 0, '75': 0, '50f': 0 };
+  const sectionAmounts  = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 전체(수주금액, 연도 무관)
+  const sectionAmounts2026   = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 입력분(체크박스 라벨 기준)
+  const sectionAmountsExcluded = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2027년 이후 입력분
+  cand.rows.forEach(r => {
+    sectionCounts[r.section] = (sectionCounts[r.section] || 0) + 1;
+    sectionAmounts[r.section] = (sectionAmounts[r.section] || 0) + r.amountMillion;
+    const entries = (REVENUE_FORECAST[r.code] || []).filter(e => e && e.월 && Number(e.금액) > 0);
+    entries.forEach(e => {
+      const y = parseInt(e.월.split('-')[0], 10);
+      const amt = Number(e.금액) || 0;
+      if (y === 2026) sectionAmounts2026[r.section] = (sectionAmounts2026[r.section] || 0) + amt;
+      else sectionAmountsExcluded[r.section] = (sectionAmountsExcluded[r.section] || 0) + amt;
+    });
+  });
 
-  // 파이프라인 포함 구간 체크박스로 걸러진 후보만 아래 집계에 사용
+  // 파이프라인 포함 구간 체크박스로 걸러진 후보만 아래 집계에 사용(실제 메인 차트·요약카드·보조 차트에 반영되는 값)
   const filteredRows = cand.rows.filter(r => PIPELINE_PROB_FILTER[r.section]);
 
   const monthlyMillion   = {}; // 1~12 (2026년만) -> 합계
-  const bySectionMillion = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 입력분만
+  const bySectionMillion = { '100': 0, '90': 0, '75': 0, '50f': 0 }; // 2026년 입력분만, 체크된 구간만
   let inputCount = 0, noInputCount = 0, inputTotalMillion = 0, noInputAmountMillion = 0;
   let autoCount = 0, manualCount = 0;
   let excludedCount = 0, excludedMillion = 0; // 2026년이 아닌(주로 2027년 이후 매출청구일) 건 — 올해 차트에서 제외
@@ -3492,13 +3510,29 @@ function computeForecastSummary(scope) {
     });
   });
 
-  console.log('[확도 구간별 금액(백만)]', sectionAmounts);
+  // ─── 자체 검증: 체크된 구간의 2026년 합계 vs 파이프라인 카드(inputTotalMillion), 월별 합계 vs 파이프라인 카드 ───
+  const VALIDATION_EPS = 0.05; // 백만원
+  const sectionSum2026 = PIPELINE_SECTIONS.reduce((s, id) => s + (bySectionMillion[id] || 0), 0);
+  const monthlySum2026 = Object.values(monthlyMillion).reduce((s, v) => s + v, 0);
+  const sectionMatch = Math.abs(sectionSum2026 - inputTotalMillion) < VALIDATION_EPS;
+  const monthlyMatch = Math.abs(monthlySum2026 - inputTotalMillion) < VALIDATION_EPS;
+
+  console.log('[검증] 구간별 전체/2026년/2027년이후 (백만원)', PIPELINE_SECTIONS.map(id => ({
+    구간: PIPELINE_LABELS[id], 건수: sectionCounts[id],
+    전체: Math.round(sectionAmounts[id] * 10) / 10,
+    '2026년': Math.round(sectionAmounts2026[id] * 10) / 10,
+    '2027년이후': Math.round(sectionAmountsExcluded[id] * 10) / 10,
+  })));
+  console.log('[검증] 4구간 2026년 합계(체크된 구간만):', sectionSum2026, '백만 vs 파이프라인 카드:', inputTotalMillion, '백만 →', sectionMatch ? '일치' : `불일치(차이 ${Math.round((sectionSum2026 - inputTotalMillion) * 10) / 10}백만)`);
+  console.log('[검증] 월별 합계(12개월, 체크된 구간만):', monthlySum2026, '백만 vs 파이프라인 카드:', inputTotalMillion, '백만 →', monthlyMatch ? '일치' : `불일치(차이 ${Math.round((monthlySum2026 - inputTotalMillion) * 10) / 10}백만)`);
 
   return {
     candidates: filteredRows, matchedCount: cand.matchedCount, unmatchedCount: cand.unmatchedCount, unmatched: cand.unmatched,
     unassignedRows: cand.unassignedRows,
     monthlyMillion, bySectionMillion, inputCount, noInputCount, inputTotalMillion, noInputAmountMillion,
-    autoCount, manualCount, excludedCount, excludedMillion, sectionAmounts,
+    autoCount, manualCount, excludedCount, excludedMillion,
+    sectionCounts, sectionAmounts, sectionAmounts2026, sectionAmountsExcluded,
+    sectionSum2026, monthlySum2026, sectionMatch, monthlyMatch,
   };
 }
 
@@ -4153,6 +4187,22 @@ function renderH1H2SummaryBar(sd) {
   el.textContent = `상반기 확정 ${wonToEok(h1Won).toFixed(1)}억(${h1Count}건) · 하반기 ${wonToEok(h2Won).toFixed(1)}억 · 합계 ${wonToEok(h1Won + h2Won).toFixed(1)}억`;
 }
 
+// 구간 합계·월별 합계가 "파이프라인" 요약카드(inputTotalMillion)와 자체적으로 일치하는지 화면 하단에 표시.
+// 두 값 모두 filteredRows에서 동일한 REVENUE_FORECAST 입력을 다르게 합산한 것이라 항상 일치해야 하며,
+// 불일치가 뜨면 computeForecastSummary 내부 로직에 실제 버그가 있다는 뜻이다.
+function renderValidationLine(forecastData) {
+  const el = document.getElementById('rev2-validation-line');
+  if (!el) return;
+  if (!forecastData) { el.textContent = ''; return; }
+  const sectionPart = forecastData.sectionMatch
+    ? '구간 합계 = 파이프라인 카드 ✓'
+    : `<span style="color:var(--del)">구간 합계 ≠ 파이프라인 카드 (차이 ${millionToEok(Math.abs(forecastData.sectionSum2026 - forecastData.inputTotalMillion)).toFixed(1)}억)</span>`;
+  const monthlyPart = forecastData.monthlyMatch
+    ? '월별 합계 = 파이프라인 카드 ✓'
+    : `<span style="color:var(--del)">월별 합계 ≠ 파이프라인 카드 (차이 ${millionToEok(Math.abs(forecastData.monthlySum2026 - forecastData.inputTotalMillion)).toFixed(1)}억)</span>`;
+  el.innerHTML = `검증: ${sectionPart} / ${monthlyPart}`;
+}
+
 function renderSalesTrend() {
   TEAM1_AFFIL_FALLBACK_USED = false; // 이번 렌더링에서 폴백이 쓰였는지 다시 판단하기 위해 매번 리셋
   renderForecastSection(); // 매출 예상 입력 표는 인벤토리 데이터만 있으면 독립적으로 동작
@@ -4167,8 +4217,9 @@ function renderSalesTrend() {
   const forecastData = computeForecastSummary(SALES_SCOPE);
   renderUnassignedControl(forecastData);
   renderOstaekControl();
-  renderProbFilterUI(forecastData ? forecastData.sectionAmounts : null);
+  renderProbFilterUI(forecastData);
   renderH1RevenueUI();
+  renderValidationLine(forecastData);
 
   if (!SALES_PARSED) {
     empty.style.display = '';
@@ -4215,16 +4266,20 @@ function setSalesScope(scope) {
 
 // ─── 매출 추이: 파이프라인 포함 구간 체크박스 ──────────────────────────────────
 
-function renderProbFilterUI(sectionAmounts) {
+function renderProbFilterUI(forecastData) {
   const el = document.getElementById('rev2-prob-filter-row');
   if (!el) return;
   el.innerHTML = PIPELINE_SECTIONS.map(id => {
-    const amt = sectionAmounts ? (sectionAmounts[id] || 0) : 0;
+    // 체크박스 라벨은 반드시 "2026년" 기준(요약카드·차트·월별 팝업과 동일 기준)으로 표시 — 자기 자신의 체크 상태와 무관하게 항상 전체 후보 기준.
+    const eok2026 = forecastData ? millionToEok(forecastData.sectionAmounts2026[id] || 0) : 0;
+    const eokAll  = forecastData ? millionToEok(forecastData.sectionAmounts[id] || 0) : 0;
+    const eokExcl = forecastData ? millionToEok(forecastData.sectionAmountsExcluded[id] || 0) : 0;
     const checked = PIPELINE_PROB_FILTER[id] ? 'checked' : '';
-    return `<label class="rev2-prob-chip" style="--chip-color:${PIPELINE_COLORS[id]}">
+    const tooltip = `2026년 ${eok2026.toFixed(1)}억 / 전체 ${eokAll.toFixed(1)}억 (2027년 이후 ${eokExcl.toFixed(1)}억 제외)`;
+    return `<label class="rev2-prob-chip" style="--chip-color:${PIPELINE_COLORS[id]}" title="${escHtml(tooltip)}">
       <input type="checkbox" ${checked} onchange="togglePipelineProbFilter('${id}', this.checked)">
       <span>${PIPELINE_LABELS[id]}</span>
-      <span class="rev2-prob-chip-amt">(${millionToEok(amt).toFixed(1)}억)</span>
+      <span class="rev2-prob-chip-amt">(${eok2026.toFixed(1)}억)</span>
     </label>`;
   }).join('');
 }
