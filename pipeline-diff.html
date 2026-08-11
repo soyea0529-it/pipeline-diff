@@ -2195,7 +2195,7 @@ async function downloadInvExcel() {
     const ws  = wb.addWorksheet(s.label.replace(/[\\/*?:[\]]/g, '_'));
     ws.columns = [
       { width: 10 }, { width: 16 }, { width: 14 }, { width: 30 }, { width: 12 },
-      { width: 10 }, { width: 10 }, { width: 36 }, { width: 30 },
+      { width: 10 }, { width: 10 }, { width: 36 },
       { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 },
     ];
 
@@ -2207,13 +2207,13 @@ async function downloadInvExcel() {
       ? `${invCompareLabel()} 변동 없음`
       : `${invCompareLabel()} ${diff > 0 ? '▲' : '▼'} ${fmtAmt(Math.abs(diff))}백만 (${invPrevLabel()} ${fmtAmt(prevTotal)}백만 → 금주 ${fmtAmt(currTotal)}백만)`;
     ws.getCell(`A${rIdx}`).value = summaryText;
-    ws.mergeCells(`A${rIdx}:N${rIdx}`);
+    ws.mergeCells(`A${rIdx}:M${rIdx}`);
     ws.getCell(`A${rIdx}`).font = { bold: true };
     rIdx += 1;
 
     const catDiffRichText = [];
     buildCatDiffData(s.id).forEach((d, i) => {
-      if (i > 0) catDiffRichText.push({ text: '   ' });
+      if (i > 0) catDiffRichText.push({ text: ' / ' });
       catDiffRichText.push({ font: { color: { argb: 'FF8890B5' } }, text: `${d.cat} ` });
       if (d.same) {
         catDiffRichText.push({ font: { color: { argb: 'FF8890B5' } }, text: '─' });
@@ -2224,7 +2224,7 @@ async function downloadInvExcel() {
       }
     });
     ws.getCell(`A${rIdx}`).value = { richText: catDiffRichText };
-    ws.mergeCells(`A${rIdx}:N${rIdx}`);
+    ws.mergeCells(`A${rIdx}:M${rIdx}`);
     rIdx += 2;
 
     const moveLines = [];
@@ -2239,14 +2239,14 @@ async function downloadInvExcel() {
       rIdx++;
       moveLines.forEach(line => {
         ws.getCell(`A${rIdx}`).value = line;
-        ws.mergeCells(`A${rIdx}:N${rIdx}`);
+        ws.mergeCells(`A${rIdx}:M${rIdx}`);
         rIdx++;
       });
       rIdx++;
     }
 
     const headerRow = ws.getRow(rIdx);
-    ['구분', '고객사명', '프로젝트코드', '프로젝트명', '영업담당자', '수주확도', '수주상태', '변동내역', '비고', '제품(백만)', '상품(백만)', '용역(백만)', '유지보수(백만)', '총합계(백만)']
+    ['구분', '고객사명', '프로젝트코드', '프로젝트명', '영업담당자', '수주확도', '수주상태', '변동내역', '제품(백만)', '상품(백만)', '용역(백만)', '유지보수(백만)', '총합계(백만)']
       .forEach((h, i) => {
         const c = headerRow.getCell(i + 1);
         c.value = h;
@@ -2269,17 +2269,14 @@ async function downloadInvExcel() {
       row.getCell(6).value = it.status;
       row.getCell(7).value = it.state;
       row.getCell(8).value = remark;
-      const noteCell = row.getCell(9);
-      noteCell.value = it.note || '';
-      noteCell.alignment = { wrapText: true, vertical: 'top' };
       INV_CATS.forEach((cat, ci) => {
         const v = it.type === 'del' ? it.cats[cat].prev : it.cats[cat].curr;
-        const cell = row.getCell(10 + ci);
+        const cell = row.getCell(9 + ci);
         cell.value = Math.round(v * 10) / 10;
         const changed = it.type !== 'new' && it.type !== 'del' && Math.abs(it.cats[cat].diff) >= AMT_EPS;
         if (changed) cell.font = { bold: true, color: { argb: 'FFEF4444' } };
       });
-      const totalCell = row.getCell(14);
+      const totalCell = row.getCell(13);
       totalCell.value = Math.round((it.type === 'del' ? it.prevAmt : it.currAmt) * 10) / 10;
       if (it.type !== 'new' && it.type !== 'del' && Math.abs(it.diff) >= AMT_EPS) totalCell.font = { bold: true, color: { argb: 'FFEF4444' } };
 
@@ -2299,12 +2296,12 @@ async function downloadInvExcel() {
 
     const totalRow = ws.getRow(rIdx);
     totalRow.getCell(1).value = '금주 합계';
-    ws.mergeCells(`A${rIdx}:I${rIdx}`);
-    totalRow.getCell(10).value = Math.round(invSectionCurrCatTotal(s.id, '제품') * 10) / 10;
-    totalRow.getCell(11).value = Math.round(invSectionCurrCatTotal(s.id, '상품') * 10) / 10;
-    totalRow.getCell(12).value = Math.round(invSectionCurrCatTotal(s.id, '용역') * 10) / 10;
-    totalRow.getCell(13).value = Math.round(invSectionCurrCatTotal(s.id, '유지보수') * 10) / 10;
-    totalRow.getCell(14).value = Math.round(invSectionCurrTotal(s.id) * 10) / 10;
+    ws.mergeCells(`A${rIdx}:H${rIdx}`);
+    totalRow.getCell(9).value = Math.round(invSectionCurrCatTotal(s.id, '제품') * 10) / 10;
+    totalRow.getCell(10).value = Math.round(invSectionCurrCatTotal(s.id, '상품') * 10) / 10;
+    totalRow.getCell(11).value = Math.round(invSectionCurrCatTotal(s.id, '용역') * 10) / 10;
+    totalRow.getCell(12).value = Math.round(invSectionCurrCatTotal(s.id, '유지보수') * 10) / 10;
+    totalRow.getCell(13).value = Math.round(invSectionCurrTotal(s.id) * 10) / 10;
     totalRow.eachCell({ includeEmpty: true }, c => { c.font = { bold: true }; });
   });
 
