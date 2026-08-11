@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>주간 파이프라인 변동이력</title>
+<title>OKC Business Intelligence</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
@@ -33,13 +33,16 @@
   .header-top { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
   .header-clear-btn { margin-left: auto; background: none; border: none; color: var(--text-sub); font-size: 11px; cursor: pointer; text-decoration: underline; opacity: .55; transition: opacity .2s; padding: 4px 2px; flex-shrink: 0; }
   .header-clear-btn:hover { opacity: 1; color: var(--text); }
-  .logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0; }
-  h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-  .subtitle { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+  .logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; letter-spacing: -0.3px; color: #fff; flex-shrink: 0; }
+  h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.2px; }
+  .subtitle { font-size: 12px; color: var(--text-sub); margin-top: 3px; }
   .tab-row { display: flex; gap: 0; }
   .tab { padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; user-select: none; }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab:hover:not(.active) { color: var(--text); }
+  .tab-muted { color: #5a5f78; }
+  .tab-muted.active { color: #7a80a0; border-bottom-color: #5a5f78; }
+  .tab-muted:hover:not(.active) { color: #7a80a0; }
 
   /* Main layout */
   main { padding: 32px 40px; max-width: 1400px; }
@@ -134,6 +137,11 @@
   .empty-state { text-align: center; padding: 80px 20px; color: var(--text-sub); }
   .empty-state .e-icon { font-size: 40px; margin-bottom: 14px; opacity: .5; }
   .empty-state p { font-size: 14px; }
+
+  /* "기타 분석 (개발 중)" 안내 화면 */
+  .report-placeholder { text-align: center; padding: 120px 20px; color: var(--text-sub); }
+  .report-placeholder-title { font-size: 18px; font-weight: 700; color: var(--text-sub); margin-bottom: 8px; }
+  .report-placeholder-sub { font-size: 13px; color: #5a5f78; }
 
   .proj-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inv-remark-cell { max-width: 220px; min-width: 160px; cursor: pointer; font-size: 11.5px; color: var(--text-sub); }
@@ -585,18 +593,17 @@
 
 <header>
   <div class="header-top">
-    <div class="logo">P</div>
+    <div class="logo">BI</div>
     <div>
-      <h1>파이프라인 주간 변동이력</h1>
-      <div class="subtitle">전주 대비 금주 금액 변동 · 신규 등록 · 삭제 항목 분석</div>
+      <h1>OKC Business Intelligence</h1>
+      <div class="subtitle">인벤토리 주간변동 및 26년 실적예상 분석</div>
     </div>
     <button class="header-clear-btn" onclick="clearAllStoredData()">저장 데이터 전체 삭제</button>
   </div>
   <div class="tab-row">
-    <div class="tab active" data-tab="inventory" onclick="switchTab('inventory')">인벤토리 비교</div>
-    <div class="tab" data-tab="sales" onclick="switchTab('sales')">매출 비교</div>
-    <div class="tab" data-tab="report" onclick="switchTab('report')">변동보고서</div>
-    <div class="tab" data-tab="revenue-trend" onclick="switchTab('revenue-trend')">매출 추이</div>
+    <div class="tab active" data-tab="inventory" onclick="switchTab('inventory')">인벤토리 주간변동 분석</div>
+    <div class="tab" data-tab="revenue-trend" onclick="switchTab('revenue-trend')">26Y 실적예상 분석</div>
+    <div class="tab tab-muted" data-tab="report" onclick="switchTab('report')">기타 분석 (개발 중)</div>
   </div>
 </header>
 
@@ -643,7 +650,8 @@
     </div>
   </div>
 
-  <!-- Sales tab -->
+  <!-- Sales tab (매출 비교 탭 — 27차 작업에서 제거. 복구 시 아래 주석 해제 + 탭 버튼 복원 +
+       switchTab의 VALID_TAB_IDS + DOMContentLoaded의 setupCard('sal',...)/restoreSalesCompareData() 복원 필요)
   <div id="tab-sales" class="tab-content">
     <div class="upload-grid">
       <div class="upload-card" id="sal-prev-card">
@@ -670,8 +678,17 @@
     </div>
     <div id="sal-result"></div>
   </div>
+  -->
 
-  <!-- Report tab -->
+  <!-- Report tab → "기타 분석 (개발 중)" 안내 화면으로 교체 (27차 작업). 기존 변동보고서 콘텐츠는
+       아래 주석으로 보존 — 복구 시 이 주석 해제 + placeholder div 삭제 + switchTab의 generateReport() 호출 복원 필요 -->
+  <div id="tab-report" class="tab-content">
+    <div class="report-placeholder">
+      <div class="report-placeholder-title">준비 중입니다</div>
+      <div class="report-placeholder-sub">추가 분석 기능이 개발 중입니다.</div>
+    </div>
+  </div>
+  <!--
   <div id="tab-report" class="tab-content">
     <div class="report-toolbar">
       <button class="btn btn-primary" onclick="generateReport()">보고서 생성 / 새로고침</button>
@@ -684,6 +701,7 @@
       </div>
     </div>
   </div>
+  -->
 
   <!-- Revenue trend tab -->
   <div id="tab-revenue-trend" class="tab-content">
@@ -948,8 +966,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   await restoreUnmatched100Excluded();
   await restoreUnmatched100Seen();
   restoreInvFiles();
-  setupCard('sal', 'prev');
-  setupCard('sal', 'curr');
   setupSalesUpload();
   setupH1RevenueUpload();
   await loadRevenueForecast();
@@ -959,7 +975,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   await restoreIncludeOstaek();
   await restoreH1Revenue();
   renderH1RevenueUI();
-  await restoreSalesCompareData();
+  await purgeRemovedSalesCompareStorage(); // 27차 작업에서 제거된 매출 비교 탭의 잔여 idb 데이터 정리
   await restoreSalesTrendData();
   await restoreLastActiveTab();
 });
@@ -1302,15 +1318,11 @@ function resetInvAll() {
       <div class="e-icon">📊</div>
       <p>전주 · 금주 인벤토리 파일을 업로드하고 분석을 실행하세요. (구간별 선택 업로드 가능)</p>
     </div>`;
-  document.getElementById('report-content').innerHTML = `
-    <div class="empty-state">
-      <div class="e-icon">📋</div>
-      <p>인벤토리 비교 탭에서 변동이력 분석을 실행한 후 보고서를 생성하세요.</p>
-    </div>`;
+  // report-content는 27차 작업에서 "기타 분석 (개발 중)" placeholder로 교체되어 더 이상 DOM에 없음
 }
 
-// ─── Upload card: click + drag & drop ────────────────────────────────────────
-
+// ─── Upload card: click + drag & drop (매출 비교 탭 전용 — 27차 작업에서 탭 제거와 함께 주석 처리) ─────
+/*
 function setupCard(type, week) {
   const card  = document.getElementById(`${type}-${week}-card`);
   const input = document.getElementById(`${type}-${week}-input`);
@@ -1331,6 +1343,7 @@ function setupCard(type, week) {
     if (file) processFile(file, type, week);
   });
 }
+*/
 
 // ─── Inventory parser (multi-row header) ─────────────────────────────────────
 // raw[2]: 기본헤더  raw[3]: 금액 대분류  raw[4]: 금액 세부  raw[5]+: data
@@ -1511,6 +1524,7 @@ function parseSalesListSheet(wb) {
   return result;
 }
 
+/*
 function processFile(file, type, week) {
   if (!file.name.match(/\.(xlsx|xls)$/i)) {
     alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.');
@@ -1552,6 +1566,7 @@ function resetAll(type) {
   delete window[`_fmt_${type}`];
   if (type === 'sal') clearSalesCompareStorage();
 }
+*/
 
 // ─── 저장/복원 공용 유틸 (IndexedDB, idb-keyval) ───────────────────────────────
 // 숫자는 저장 시 소수점 2자리로 반올림한다.
@@ -1561,9 +1576,9 @@ function roundNumbersDeep(obj) {
   return JSON.parse(JSON.stringify(obj), (k, v) => typeof v === 'number' ? Math.round(v * 100) / 100 : v);
 }
 
-// ─── 매출 비교: 분석 결과 저장/복원 (IndexedDB) ────────────────────────────────
+// ─── 매출 비교: 분석 결과 저장/복원 (IndexedDB) — 27차 작업에서 탭 제거와 함께 주석 처리 ─────────
 // 원본 파일이 아니라 업로드 시 파싱된 행 데이터(= 화면/재분석에 실제 쓰이는 데이터)만 저장.
-
+/*
 const SALES_COMPARE_STORAGE_KEY = 'sales_compare';
 
 async function saveSalesCompareData(changes) {
@@ -1581,7 +1596,8 @@ async function saveSalesCompareData(changes) {
         totalDiff,
       },
     }));
-  } catch (e) { /* IndexedDB 사용 불가 등 — 저장만 건너뛰고 분석 기능은 계속 동작 */ }
+  } catch (e) { // IndexedDB 사용 불가 등 — 저장만 건너뛰고 분석 기능은 계속 동작
+  }
 }
 
 async function restoreSalesCompareData() {
@@ -1602,17 +1618,27 @@ async function restoreSalesCompareData() {
       const ts = saved.analyzedAt ? new Date(saved.analyzedAt).toLocaleString('ko-KR') : '';
       document.getElementById('sal-status').textContent = `✓ 이전 업로드/분석 결과를 불러왔습니다.${ts ? ' (분석: ' + ts + ')' : ''}`;
     }
-  } catch (e) { /* 저장 데이터 형식이 깨졌으면 빈 상태로 시작 */ }
+  } catch (e) { // 저장 데이터 형식이 깨졌으면 빈 상태로 시작
+  }
 }
 
 async function clearSalesCompareStorage() {
   if (!window.idbKeyval) return;
-  try { await idbKeyval.del(SALES_COMPARE_STORAGE_KEY); } catch (e) { /* 무시 */ }
+  try { await idbKeyval.del(SALES_COMPARE_STORAGE_KEY); } catch (e) { // 무시
+  }
+}
+*/
+
+// 매출 비교 탭 제거로 더 이상 쓰이지 않게 된 idb 키 'sales_compare'를 페이지 로드 시 조용히 정리한다.
+async function purgeRemovedSalesCompareStorage() {
+  if (!window.idbKeyval) return;
+  try { await idbKeyval.del('sales_compare'); } catch (e) { /* 무시 */ }
 }
 
 // ─── Tab switch ───────────────────────────────────────────────────────────────
 
 function switchTab(t) {
+  if (!document.getElementById('tab-' + t)) t = 'inventory'; // 유효하지 않은/삭제된 탭 ID 방어 — 첫 탭으로 대체
   const currentActive = document.querySelector('.tab.active');
   const leavingRevenueTrend = currentActive && currentActive.dataset.tab === 'revenue-trend' && t !== 'revenue-trend';
   if (leavingRevenueTrend && FORECAST_DIRTY_CODES.size > 0) {
@@ -1623,7 +1649,6 @@ function switchTab(t) {
     el.classList.toggle('active', el.dataset.tab === t));
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + t).classList.add('active');
-  if (t === 'report') generateReport();
   if (t === 'revenue-trend') renderSalesTrend();
   saveLastActiveTab(t);
 }
@@ -1638,7 +1663,7 @@ window.addEventListener('beforeunload', e => {
 // ─── 마지막 탭 기억 (IndexedDB) ─────────────────────────────────────────────────
 
 const LAST_TAB_STORAGE_KEY = 'last_active_tab';
-const VALID_TAB_IDS = ['inventory', 'sales', 'report', 'revenue-trend'];
+const VALID_TAB_IDS = ['inventory', 'report', 'revenue-trend']; // 'sales'(매출 비교)는 27차 작업에서 탭 제거 — 저장된 값이 이거면 자동으로 첫 탭으로 대체됨
 
 async function saveLastActiveTab(t) {
   if (!window.idbKeyval) return;
@@ -1658,7 +1683,6 @@ async function restoreLastActiveTab() {
 async function clearAllStoredData() {
   if (!confirm('저장된 모든 분석 결과와 매출 예상 입력값을 삭제합니다. 계속하시겠습니까?')) return;
   resetInvAll();
-  resetAll('sal');
   resetSalesTrend();
   REVENUE_FORECAST = {};
   PIPELINE_PROB_FILTER = { '100': true, '90': true, '75': true, '50f': true };
@@ -2431,8 +2455,8 @@ async function downloadInvExcel() {
   a.click();
 }
 
-// ─── Column detection ─────────────────────────────────────────────────────────
-
+// ─── Column detection (매출 비교 탭 전용 — 27차 작업에서 탭 제거와 함께 주석 처리) ─────────────
+/*
 function detectConfig(type, rows) {
   if (!rows || rows.length === 0) return null;
   const keys  = Object.keys(rows[0]);
@@ -2469,6 +2493,7 @@ function detectConfig(type, rows) {
     };
   }
 }
+*/
 
 function toNum(v) {
   if (v === null || v === undefined || v === '') return 0;
@@ -2476,8 +2501,8 @@ function toNum(v) {
   return isNaN(n) ? 0 : n;
 }
 
-// ─── Compare logic ────────────────────────────────────────────────────────────
-
+// ─── Compare logic (매출 비교 탭 전용 — 27차 작업에서 탭 제거와 함께 주석 처리) ────────────────
+/*
 function runCompare(type) {
   const prev = DATA[type].prev;
   const curr = DATA[type].curr;
@@ -2653,9 +2678,10 @@ function exportCsv(type) {
   a.download = `변동이력_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
+*/
 
-// ─── 변동보고서 ───────────────────────────────────────────────────────────────
-
+// ─── 변동보고서 (탭 제거됨, 27차 작업 — 아래는 복구용으로 주석 보존) ─────────────────
+/*
 function generateReport() {
   if (!INV_RESULT) return; // keep the empty state
 
@@ -2793,6 +2819,7 @@ function buildProjectCard(c, changeType) {
       ${tableHtml}
     </div>`;
 }
+*/
 
 // ─── Util ─────────────────────────────────────────────────────────────────────
 

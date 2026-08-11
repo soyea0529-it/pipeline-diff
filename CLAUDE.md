@@ -832,6 +832,49 @@
 
 ---
 
+### 2026-08-11 — 타이틀 및 탭 구조 개편, 매출 비교 탭 제거 (28차 작업)
+
+#### 목표
+서비스 브랜드/타이틀을 "파이프라인 주간 변동이력"에서 "OKC Business Intelligence"로 전면 개편하고, 탭 구조를 3개(인벤토리 주간변동 분석 / 26Y 실적예상 분석 / 기타 분석(개발 중))로 정리. 더 이상 쓰이지 않는 "매출 비교" 탭을 제거.
+
+#### 1. 타이틀 변경
+- `<h1>`: "파이프라인 주간 변동이력" → "OKC Business Intelligence", `<title>`(브라우저 탭)도 동일하게 변경.
+- 부제: "전주 대비 금주 금액 변동 · 신규 등록 · 삭제 항목 분석" → "인벤토리 주간변동 및 26년 실적예상 분석".
+- 좌측 로고 배지: "P" → "BI"(2글자에 맞춰 `font-size` 16px→13px, `letter-spacing` 축소).
+- 영문 타이틀과 한글 부제의 균형을 위해 `h1`의 `font-size`를 20px→18px로 줄이고 `letter-spacing`을 -0.3px(한글 자간 좁힘)에서 +0.2px(영문 자간 살짝 벌림)로 전환.
+
+#### 2. 탭 구조 변경
+- 순서를 인벤토리 주간변동 분석 → 26Y 실적예상 분석 → 기타 분석(개발 중)으로 재배치(기존: 인벤토리 비교 → 매출 비교 → 변동보고서 → 매출 추이).
+- `data-tab` id 자체는 유지하고(`inventory`/`revenue-trend`/`report`) 버튼 라벨 텍스트만 변경 — `switchTab()`/`VALID_TAB_IDS`/idb 저장 키 등 내부 로직을 건드리지 않기 위한 선택.
+- "기타 분석 (개발 중)" 탭에 `.tab-muted` 클래스 추가, 비활성/활성 상태 모두 회색 계열(`#5a5f78`/`#7a80a0`)로 고정해 다른 두 탭과 시각적으로 구분.
+
+#### 3. 매출 비교 탭 제거
+- 탭 버튼과 `<div id="tab-sales">` 콘텐츠를 HTML에서 제거하되, 6차 작업(파이프라인 추이 탭 제거) 때와 동일한 방식으로 `<!-- -->` 주석으로 통째로 보존(복구 시 주석 해제만 하면 되도록 안내 주석 포함).
+- 관련 JS 함수(`setupCard`/`processFile`/`checkReady`/`resetAll`/`detectConfig`/`runCompare`/`renderResult`/`applyFilter`/`applySearch`/`exportCsv`/`saveSalesCompareData`/`restoreSalesCompareData`/`clearSalesCompareStorage`)도 삭제하지 않고 `/* ... */` 블록 주석으로 보존. 단, 이 함수들 안에 있던 `/* 무시 */` 같은 인라인 블록 주석은 JS가 중첩 블록 주석(`/* /* */ */`)을 지원하지 않아 바깥쪽 주석을 조기 종료시키는 문제가 있어, 주석 처리 전에 전부 `//` 라인 주석으로 바꿔야 했음(직접 문법 오류로 발견).
+- `toNum()`은 이름은 비슷한 위치에 있었지만 매출 추이 탭(`readAmountsFromRow`/`parseTeamDetailRows`)에서도 쓰이는 공용 함수라 주석 처리 대상에서 제외.
+- `DOMContentLoaded`에서 `setupCard('sal','prev')`/`setupCard('sal','curr')` 호출 제거, `await restoreSalesCompareData()`를 신규 `purgeRemovedSalesCompareStorage()`(idb `sales_compare` 키를 조용히 삭제)로 교체. `clearAllStoredData()`에서 `resetAll('sal')` 호출 제거(헤더의 "저장 데이터 전체 삭제" 대상에서 자연히 제외됨).
+- "공유용 HTML 내보내기" 기능은 코드 전체를 검토한 결과 현재 코드베이스에 애초에 존재하지 않아 해당 사항 없음(요청의 예방적 조항으로 판단, 별도 조치 불필요).
+
+#### 4. 기타 분석 (개발 중) 탭
+- 기존 `<div id="tab-report">`의 내부를 `.report-placeholder`(중앙 정렬, "준비 중입니다" + "추가 분석 기능이 개발 중입니다." 회색 텍스트)로 교체하고, 원래 콘텐츠(보고서 생성 버튼 + report-content)는 같은 `id="tab-report"` 아래 `<!-- -->` 주석으로 바로 아래에 보존.
+- `generateReport`/`buildReportSection`/`buildProjectCard`(변동보고서 전용, "─── 변동보고서 ───" 섹션 전체)를 `/* ... */`로 주석 처리, `switchTab()`의 `if (t === 'report') generateReport();` 호출도 제거(주석 처리된 함수를 호출하면 즉시 런타임 에러가 나므로).
+- 이 섹션과 이름이 비슷해 혼동하기 쉬운 "보고문 초안"(`buildFullReportDraftText`/`copyReportDraft`, 인벤토리 비교 탭 안에 있는 완전히 다른 기능)은 그대로 유지 — 코드 감사로 두 기능이 서로 다른 섹션(주석 헤더 "인벤토리 비교: 보고문 초안" vs "변동보고서")에 있음을 확인 후 후자만 정확히 골라 주석 처리.
+
+#### 5. 마지막 탭 기억 보정
+- `VALID_TAB_IDS`에서 `'sales'` 제거(`['inventory','report','revenue-trend']`) — `restoreLastActiveTab()`이 저장된 값을 이 배열로 검증하는 기존 구조 덕분에, 저장값이 `'sales'`였던 사용자는 별도 코드 추가 없이 자동으로 첫 탭('inventory')으로 대체됨.
+- `switchTab(t)` 최상단에 `if (!document.getElementById('tab-' + t)) t = 'inventory';` 방어 코드 추가 — `restoreLastActiveTab()` 경로 외에 어디선가 유효하지 않은 탭 id로 직접 호출되더라도(예: 브라우저 콘솔, 향후 코드 변경 실수) 에러 없이 안전하게 첫 탭으로 대체.
+
+#### 검증
+- 헤더 로고("BI")·타이틀("OKC Business Intelligence")·부제·탭 3개(라벨/순서/`tab-muted` 클래스)를 DOM에서 직접 조회해 스펙과 정확히 일치하는지 확인.
+- 제거 대상 함수 16개(`setupCard`~`buildProjectCard`) 전부를 `typeof window[name]`로 조회해 `'undefined'`임을 확인 — 코드가 주석 안에 안전하게 격리되어 있고 실수로 활성 코드에 남지 않았음을 런타임으로 검증.
+- "기타 분석" 탭 전환 시 "준비 중입니다"/"추가 분석 기능이 개발 중입니다." 텍스트와 `#report-content` 요소가 더 이상 존재하지 않는지 확인.
+- `idbKeyval.set('last_active_tab','sales')` 후 `restoreLastActiveTab()` 실행 → 자동으로 'inventory' 탭이 열리는지 확인. `switchTab('sales')`를 직접 호출해도 에러 없이 'inventory'로 대체되는지 확인.
+- `sales_compare` idb 키에 더미 데이터를 심어둔 뒤 새로고침 → 페이지 로드 시 조용히 삭제되는지 확인.
+- 인벤토리 탭에서 실제 분석을 실행한 뒤 `clearAllStoredData()`를 호출했을 때 `TypeError: Cannot set properties of null (setting 'innerHTML')`(report-content 참조 오류)가 발생하는 회귀를 최초 테스트에서 실제로 발견 — `resetInvAll()`이 이미 제거된 `#report-content`를 초기화하려던 잔재 코드였음을 확인하고 해당 줄을 삭제해 수정. 재검증 결과 에러 없이 정상 동작.
+- 인벤토리 비교(파일 업로드 → 분석)와 26Y 실적예상 분석(탭 전환 → 렌더링) 두 탭이 이번 변경 이후에도 회귀 없이 정상 동작하는지 확인. 전 과정에서 콘솔 에러 없음.
+
+---
+
 ## 환경 정보
 - OS: Windows 10
 - Node.js: v24.16.0
