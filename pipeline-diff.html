@@ -575,6 +575,8 @@
   .rev2-auto-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #2e3350; color: #8890b5; vertical-align: middle; }
   .rev2-forecast-include-cell { text-align: center; }
   .rev2-forecast-include-check { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  /* 제외된 행: 배경을 어둡게(체크박스 포함 전체 행) + 월/금액 텍스트는 회색+취소선. 값 자체는 지우지 않고 그대로 표시. */
+  .rev2-forecast-table tr.rev2-forecast-row-excluded td { background: var(--bg); }
   .rev2-forecast-table tr.rev2-forecast-row-excluded td:not(.rev2-forecast-include-cell) { opacity: 0.45; }
   .rev2-forecast-table tr.rev2-forecast-row-excluded .rev2-month-select,
   .rev2-forecast-table tr.rev2-forecast-row-excluded .rev2-amount-input { text-decoration: line-through; }
