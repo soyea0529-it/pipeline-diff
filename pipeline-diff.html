@@ -381,6 +381,7 @@
     border-radius: 10px; padding: 24px 24px 16px;
   }
   .chart-card-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .rev2-chart-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
   .chart-legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-sub); }
   .legend-line { display: inline-block; width: 20px; height: 3px; border-radius: 2px; }
@@ -777,7 +778,10 @@
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
         <div class="chart-card">
-          <div class="chart-card-title">연간 목표 대비 실적 및 매출예상 추이</div>
+          <div class="rev2-chart-header">
+            <div class="chart-card-title" style="margin-bottom:0">연간 목표 대비 실적 및 매출예상 추이</div>
+            <button type="button" class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="downloadRevenueTrendExcel()">📥 데이터 다운로드</button>
+          </div>
           <div class="rev2-legend" id="rev2-main-legend"></div>
           <div class="rev2-actual-status-line" id="rev2-actual-status-line"></div>
           <div class="rev2-pipeline-notice" id="rev2-pipeline-notice" style="display:none">인벤토리 비교 탭에서 먼저 분석하면 매출예상이 함께 표시됩니다</div>
@@ -3041,6 +3045,7 @@ let salesChart1 = null, salesChartPipe = null;
 
 function wonToEok(v)     { return (v || 0) / 100000000; }
 function millionToEok(v) { return (v || 0) / 100; }
+function wonToMillion(v) { return (v || 0) / 1000000; }
 
 // ─── 매출 추이: 엑셀 파싱 ─────────────────────────────────────────────────────
 
@@ -3723,6 +3728,7 @@ function getPipelineCandidateRows(scope) {
   const rows = [];
   let matchedCount = 0, unmatchedCount = 0;
   const unmatched = [];
+  const remainder100Detail = []; // 100% 구간 전 건의 잔여분 계산 과정(스코프 무관) — 엑셀 다운로드 시트5용
 
   const rows100 = (INV_FILES.curr['100'] && INV_FILES.curr['100'].rows) || [];
   rows100.forEach(r => {
@@ -3730,20 +3736,27 @@ function getPipelineCandidateRows(scope) {
     const order = r['총합계'] || 0; // 백만원
     const invoicedWon = invoicedMap[code];
     let remainder;
+    let matched;
+    let invoicedMillion;
     if (invoicedWon != null) {
       matchedCount++;
-      remainder = Math.max(0, order - invoicedWon / 1000000); // 원 -> 백만원
+      matched = true;
+      invoicedMillion = invoicedWon / 1000000;
+      remainder = Math.max(0, order - invoicedMillion); // 원 -> 백만원
     } else {
       unmatchedCount++;
+      matched = false;
+      invoicedMillion = 0;
       // 사용자가 [상세보기]에서 건별로 포함/제외를 선택할 수 있음(기본값: 포함) — 아직 청구 전인지, 코드 표기 불일치로
       // 이미 청구됐는지 시스템은 판단할 수 없어 사용자 판단에 맡긴다.
       const included = !UNMATCHED_100_EXCLUDED.has(code);
       unmatched.push({ code, name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', amountMillion: order, amountEok: millionToEok(order), included });
       remainder = included ? order : 0; // 제외 선택 시 잔여분 0으로 처리(이중 계산 방지)
     }
+    remainder100Detail.push({ code, name: r['프로젝트명'] || '', orderMillion: order, invoicedMillion, remainderMillion: remainder, matched });
     if (remainder > AMT_EPS && decideScope(r, remainder, '100')) { // 잔여분이 0보다 큰 건만 후보에 포함
       rows.push({
-        code, name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', section: '100',
+        code, name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', section: '100', affiliation: r['소속'] || '',
         amountMillion: remainder, isRemainder: true,
         orderDate: r['수주예정일'], revenueDate: r['매출예정일'],
       });
@@ -3756,7 +3769,7 @@ function getPipelineCandidateRows(scope) {
       const amountMillion = r['총합계'] || 0;
       if (!decideScope(r, amountMillion, id)) return;
       rows.push({
-        code: String(r['프로젝트코드'] || '').trim(), name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', section: id,
+        code: String(r['프로젝트코드'] || '').trim(), name: r['프로젝트명'] || '', sales: r['영업담당자'] || '', section: id, affiliation: r['소속'] || '',
         amountMillion, isRemainder: false,
         orderDate: r['수주예정일'], revenueDate: r['매출예정일'],
       });
@@ -3769,7 +3782,7 @@ function getPipelineCandidateRows(scope) {
     console.log('[1팀 판별] 소속 미분류 건수:', unassignedRows.length, '/ 프로젝트코드:', unassignedRows.map(u => u.code));
   }
 
-  return { rows, matchedCount, unmatchedCount, unmatched, unassignedRows };
+  return { rows, matchedCount, unmatchedCount, unmatched, unassignedRows, remainder100Detail };
 }
 
 // ─── 매출 추이: 매출 예상 수기 입력 (IndexedDB 저장) ───────────────────────────
@@ -4070,8 +4083,8 @@ function computeForecastSummary(scope) {
   console.log('[검증] 월별 합계(체크된 구간만):', monthlySumH2, '백만 vs 하반기 예상실적(예상 성분):', h2TotalMillion, '백만 →', monthlyMatch ? '일치' : `불일치(차이 ${Math.round((monthlySumH2 - h2TotalMillion) * 10) / 10}백만)`);
 
   return {
-    candidates: filteredRows, matchedCount: cand.matchedCount, unmatchedCount: cand.unmatchedCount, unmatched: cand.unmatched,
-    unassignedRows: cand.unassignedRows,
+    candidates: filteredRows, allCandidates: cand.rows, matchedCount: cand.matchedCount, unmatchedCount: cand.unmatchedCount, unmatched: cand.unmatched,
+    unassignedRows: cand.unassignedRows, remainder100Detail: cand.remainder100Detail,
     monthlyMillion, bySectionMillion, bySectionMillionH2, inputCount, noInputCount, inputTotalMillion, noInputAmountMillion,
     autoCount, manualCount, excludedCount, excludedMillion, h2TotalMillion, h2InputCount,
     sectionCounts, sectionAmounts, sectionAmounts2026, sectionAmountsExcluded,
@@ -4377,6 +4390,29 @@ document.addEventListener('keydown', e => {
   if (overlay && overlay.style.display !== 'none') closeMonthForecastPopup();
 });
 
+// 메인 차트(확정선/예상선/누적목표)와 엑셀 다운로드(월별 시트)가 공유하는 누적 배열 계산.
+// 백만원 단위 원본 그대로 반환 — 차트는 eok로, 엑셀은 백만원 그대로 변환해서 쓴다(둘 다 이 함수 하나만 호출, 재계산 없음).
+function buildChartArrays(scope, series, forecastData) {
+  const hasInput = !!(forecastData && forecastData.inputCount > 0);
+  const confirmedLastMonth = forecastData ? forecastData.confirmedLastMonth : getConfirmedLastMonth();
+
+  const cumTargetMillion = series.map(s => cumulativeTargetAt(scope, s.month)); // 백만원, 원본 그대로(변환 없음)
+  const cumActualWon = buildCumulativeActual(series); // series는 확정 구간(1~확정 마지막 월)에만 값이 있으므로 그대로 확정 누적이 됨
+
+  // 예상 누적: 확정 마지막 월 지점(확정선과 겹치는 앵커)에서 시작해 그 이후 달의 매출예상을 누적(백만원)
+  let pipelineMillion = null;
+  if (hasInput) {
+    pipelineMillion = new Array(12).fill(null);
+    let running = confirmedLastMonth >= 1 ? wonToMillion(cumActualWon[confirmedLastMonth - 1]) : 0;
+    if (confirmedLastMonth >= 1) pipelineMillion[confirmedLastMonth - 1] = running;
+    for (let m = confirmedLastMonth + 1; m <= 12; m++) {
+      running += (forecastData.monthlyMillion[m] || 0);
+      pipelineMillion[m - 1] = running;
+    }
+  }
+  return { confirmedLastMonth, cumTargetMillion, cumActualWon, pipelineMillion };
+}
+
 // [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
 // 2-구간 차트: 확정(1~확정 마지막 월, 파란 실선) / 예상(확정 마지막 월 이후, 초록 점선).
 // confirmedLastMonth·h2ForecastEok 등은 모두 forecastData(computeForecastSummary)에서 그대로 읽어온다 — 별도 재계산 없음.
@@ -4385,23 +4421,12 @@ function renderSalesChart1(scope, series, forecastData) {
   if (salesChart1) salesChart1.destroy();
 
   const hasInput = !!(forecastData && forecastData.inputCount > 0);
-  const confirmedLastMonth = forecastData ? forecastData.confirmedLastMonth : getConfirmedLastMonth();
+  const arrs = buildChartArrays(scope, series, forecastData);
+  const confirmedLastMonth = arrs.confirmedLastMonth;
 
-  const cumTargetEok = series.map(s => millionToEok(cumulativeTargetAt(scope, s.month)));
-  const cumActualWon = buildCumulativeActual(series); // series는 확정 구간(1~확정 마지막 월)에만 값이 있으므로 그대로 확정선이 됨
-  const confirmedArr = cumActualWon.map(v => v == null ? null : wonToEok(v));
-
-  // 예상선: 확정 마지막 월 지점(파란선과 겹치는 앵커)에서 시작해 그 이후 달의 매출예상을 누적
-  let pipelineArr = null;
-  if (hasInput) {
-    pipelineArr = new Array(12).fill(null);
-    let running = confirmedLastMonth >= 1 ? (confirmedArr[confirmedLastMonth - 1] || 0) : 0;
-    if (confirmedLastMonth >= 1) pipelineArr[confirmedLastMonth - 1] = running;
-    for (let m = confirmedLastMonth + 1; m <= 12; m++) {
-      running += millionToEok(forecastData.monthlyMillion[m] || 0);
-      pipelineArr[m - 1] = running;
-    }
-  }
+  const cumTargetEok = arrs.cumTargetMillion.map(millionToEok);
+  const confirmedArr = arrs.cumActualWon.map(v => v == null ? null : wonToEok(v));
+  const pipelineArr = arrs.pipelineMillion ? arrs.pipelineMillion.map(v => v == null ? null : millionToEok(v)) : null;
   const pipelineStartIdx = confirmedLastMonth - 1; // 0-based, 클릭 가능 판정 기준(이 인덱스보다 큰 월만 클릭 가능)
 
   const datasets = [
@@ -4506,6 +4531,146 @@ function renderSalesChart1(scope, series, forecastData) {
   } else {
     unassignedFootnoteEl.style.display = 'none';
   }
+}
+
+// ─── 매출 추이: 데이터 다운로드(회사 공식 자료 대조 검증용) ────────────────────
+// 화면과 동일한 forecastData(computeForecastSummary)·series·buildChartArrays를 그대로 사용 — 별도 재계산 없음.
+function forecastEntryReasons(code, section, monthStr, confirmedLastMonth) {
+  const reasons = [];
+  const y = parseInt(monthStr.split('-')[0], 10), m = parseInt(monthStr.split('-')[1], 10);
+  if (y !== 2026) reasons.push('2027년 이후');
+  else if (m <= confirmedLastMonth) reasons.push('확정 구간 중복');
+  if (isRevenueEntryExcluded(code, monthStr)) reasons.push('수동 제외');
+  if (!PIPELINE_PROB_FILTER[section]) reasons.push('확도 구간 미선택');
+  return reasons;
+}
+
+async function downloadRevenueTrendExcel() {
+  const scope = SALES_SCOPE;
+  const forecastData = computeForecastSummary(scope);
+  if (!forecastData) { alert('먼저 인벤토리 비교 탭에서 분석을 실행해주세요.'); return; }
+  const series = buildMonthlySeries(scope);
+  if (!series) { alert('먼저 주간 영업회의자료를 업로드해주세요.'); return; }
+  const arrs = buildChartArrays(scope, series, forecastData);
+
+  const wb = new ExcelJS.Workbook();
+  const headerFill = 'FF22263A';
+  const greyFill = 'FFE5E7EB';
+  const applyHeaderStyle = row => row.eachCell(c => {
+    c.font = { bold: true, color: { argb: 'FFE8EAF6' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFill } };
+  });
+
+  // ── 시트1: 요약 ──
+  const ws1 = wb.addWorksheet('요약');
+  ws1.columns = [{ width: 24 }, { width: 22 }];
+  applyHeaderStyle(ws1.addRow(['항목', '값(억)']));
+  [
+    ['연간 목표', forecastData.annualTargetEok],
+    ['26년 총 누적예상 실적', forecastData.totalExpectedEok],
+    ['상반기 누적실적', forecastData.h1Eok],
+    ['하반기 확정실적', forecastData.h2ConfirmedEok],
+    ['하반기 예상실적', forecastData.h2ForecastEok],
+    ['목표 대비 증감', forecastData.deltaEok],
+  ].forEach(([label, val]) => {
+    const row = ws1.addRow([label, val]);
+    row.getCell(2).numFmt = '#,##0.0';
+  });
+  {
+    const rateRow = ws1.addRow(['예상 달성률', forecastData.achieveRate]);
+    rateRow.getCell(2).numFmt = '#,##0.0"%"';
+  }
+  ws1.addRow([]);
+  const boldRow = row => { row.getCell(1).font = { bold: true }; return row; };
+  boldRow(ws1.addRow(['구분 기준', '']));
+  ws1.addRow(['스코프', scope === '팀1' ? '공공영업1팀' : '영업본부']);
+  ws1.addRow(['확정 실적 마지막 월', forecastData.confirmedLastMonth >= 1 ? `2026년 ${forecastData.confirmedLastMonth}월` : '없음']);
+  const checkedLabels = PIPELINE_SECTIONS.filter(id => PIPELINE_PROB_FILTER[id]).map(id => PIPELINE_LABELS[id]).join(', ') || '(선택 없음)';
+  ws1.addRow(['적용 확도 구간', checkedLabels]);
+  ws1.addRow(['2027년 이후 제외', `${forecastData.excludedCount}건 ${millionToEok(forecastData.excludedMillion).toFixed(1)}억`]);
+  ws1.addRow(['수동 제외 건', `${forecastData.manualExcludedCount}건 ${millionToEok(forecastData.manualExcludedMillion).toFixed(1)}억`]);
+  ws1.addRow(['확정 구간 중복 제외', `${forecastData.dedupCount}건 ${millionToEok(forecastData.dedupMillion).toFixed(1)}억`]);
+  if (scope === '팀1') {
+    ws1.addRow(['오수택 포함 여부', INCLUDE_OSTAEK ? '포함' : '미포함']);
+    ws1.addRow(['소속 미분류 포함 여부', INCLUDE_UNASSIGNED ? '포함' : '미포함']);
+  }
+  ws1.addRow(['생성 시각', new Date().toLocaleString('ko-KR')]);
+
+  // ── 시트2: 월별 ──
+  const ws2 = wb.addWorksheet('월별');
+  ws2.columns = [{ width: 8 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 20 }];
+  applyHeaderStyle(ws2.addRow(['월', '확정실적(백만)', '매출예상(백만)', '누적실적(백만)', '누적목표(백만)', '누적(실적+예상)(백만)']));
+  for (let m = 1; m <= 12; m++) {
+    const confirmedMillion = series[m - 1].total != null ? wonToMillion(series[m - 1].total) : null;
+    const forecastMillion = forecastData.monthlyMillion[m] || 0;
+    const cumActualMillion = arrs.cumActualWon[m - 1] != null ? wonToMillion(arrs.cumActualWon[m - 1]) : null;
+    const cumTargetMillionVal = arrs.cumTargetMillion[m - 1];
+    const combinedMillion = arrs.pipelineMillion ? arrs.pipelineMillion[m - 1] : null;
+    const row = ws2.addRow([`${m}월`, confirmedMillion, forecastMillion, cumActualMillion, cumTargetMillionVal, combinedMillion]);
+    [2, 3, 4, 5, 6].forEach(ci => { row.getCell(ci).numFmt = '#,##0.0'; });
+  }
+
+  // ── 시트3: 확도별 ──
+  const ws3 = wb.addWorksheet('확도별');
+  ws3.columns = [{ width: 12 }, { width: 10 }, { width: 16 }, { width: 12 }];
+  applyHeaderStyle(ws3.addRow(['확도', '건수', '금액(백만)', '금액(억)']));
+  let sumCount = 0, sumMillion = 0;
+  PIPELINE_SECTIONS.forEach(id => {
+    const count = forecastData.sectionCounts[id] || 0;
+    const millionVal = forecastData.bySectionMillion[id] || 0;
+    sumCount += count; sumMillion += millionVal;
+    const row = ws3.addRow([PIPELINE_LABELS[id], count, millionVal, millionToEok(millionVal)]);
+    row.getCell(3).numFmt = '#,##0.0'; row.getCell(4).numFmt = '#,##0.0';
+  });
+  {
+    const row = ws3.addRow(['합계', sumCount, sumMillion, millionToEok(sumMillion)]);
+    row.eachCell(c => { c.font = { bold: true }; });
+    row.getCell(3).numFmt = '#,##0.0'; row.getCell(4).numFmt = '#,##0.0';
+  }
+
+  // ── 시트4: 사업별 상세(핵심) — 매출예상에 등록된 모든 건, 제외된 건도 포함해 누락 없이 나열 ──
+  const ws4 = wb.addWorksheet('사업별 상세');
+  ws4.columns = [
+    { width: 10 }, { width: 14 }, { width: 28 }, { width: 10 }, { width: 24 },
+    { width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 10 }, { width: 28 },
+  ];
+  applyHeaderStyle(ws4.addRow(['확도', '사업코드', '사업명', '담당자', '소속', '매출순번', '회차표기', '매출예상월', '예상금액(백만)', '포함여부', '제외사유']));
+  (forecastData.allCandidates || []).forEach(c => {
+    const entries = REVENUE_FORECAST[c.code] || [];
+    entries.forEach(e => {
+      if (!e || !e.월 || !(Number(e.금액) > 0)) return;
+      const reasons = forecastEntryReasons(c.code, c.section, e.월, forecastData.confirmedLastMonth);
+      const included = reasons.length === 0;
+      const seq = (e.__seq != null && e.__seq !== '') ? normalizeSeq(e.__seq) : '';
+      const seqTotal = (seq && e.__seqTotal) ? e.__seqTotal : '';
+      const roundTrip = (seq && seqTotal) ? `(${seq}/${seqTotal})` : '';
+      const row = ws4.addRow([
+        PIPELINE_LABELS[c.section], c.code, c.name, c.sales, c.affiliation || '', seq, roundTrip,
+        e.월, Number(e.금액), included ? 'O' : 'X', reasons.join('; '),
+      ]);
+      row.getCell(9).numFmt = '#,##0.0';
+      if (!included) row.eachCell({ includeEmpty: true }, cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: greyFill } }; });
+    });
+  });
+
+  // ── 시트5: 100% 잔여분 계산 내역 ──
+  const ws5 = wb.addWorksheet('100% 잔여분 계산 내역');
+  ws5.columns = [{ width: 14 }, { width: 28 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 10 }];
+  applyHeaderStyle(ws5.addRow(['사업코드', '사업명', '수주금액(백만)', '기청구액(백만)', '잔여분(백만)', '매칭여부']));
+  (forecastData.remainder100Detail || []).forEach(d => {
+    const row = ws5.addRow([d.code, d.name, d.orderMillion, d.invoicedMillion, d.remainderMillion, d.matched ? '매칭' : '미매칭']);
+    [3, 4, 5].forEach(ci => { row.getCell(ci).numFmt = '#,##0.0'; });
+    if (!d.matched) row.eachCell({ includeEmpty: true }, cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: greyFill } }; });
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  a.download = `실적예상_검증_${dateStr}.xlsx`;
+  a.click();
 }
 
 // [보조 차트] 확도별 파이프라인 구성 (가로 누적 막대) — 입력된 예상금액을 사업의 확도 구간별로 집계
