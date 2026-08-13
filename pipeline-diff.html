@@ -3294,70 +3294,60 @@ function aggregateTeam1ByMonth(rows) {
 
 // ─── 매출 추이: 하반기 매출 탭 (7월~직전월 확정 실적) ──────────────────────────
 // "하반기 매출" 시트에는 상반기 데이터도 함께 들어있어 매출실적일자 월>=7인 행만 사용한다.
-// 헤더("NO")와 소계 행("N월 매출 소계"/"N월 매출 예상액")이 월별 블록마다 반복되는 구조 — 소계 행의 텍스트로
-// 직전 블록이 확정(소계)인지 예상(예상액)인지 판정하고, 예상 블록은 통째로 버린다(확정 실적에 넣지 않음).
+// 헤더("NO")가 블록마다 반복되는 구조 — NO 행을 만날 때마다 컬럼 위치를 다시 탐지한다.
+// 결재완료/발행예정 등 상태 컬럼은 읽지도 필터링에도 쓰지 않는다 — 매출실적일자에 잡힌 전액을 그대로 실적으로 집계한다.
+// (이전 구현은 "N월 매출 소계"/"매출 예상액" 문구가 있는 행을 찾아야만 그 앞 블록을 확정 실적으로 확정 짓는
+//  방식이었는데, 실제 파일에 그 문구가 없거나 다르면 모든 행이 끝까지 보류 상태로 남아 통째로 버려지는 버그가 있었다.)
 function parseH2SalesSheet(wb) {
   const targetName = wb.SheetNames.find(n => n.includes('하반기')) || wb.SheetNames[2];
   console.log('[하반기 매출 파싱] 시트 목록:', wb.SheetNames, '/ 탐지된 시트:', targetName || '(없음 — 하반기 확정 미반영)');
-  if (!targetName) return { sheetFound: false, confirmedRows: [], monthlyBreakdown: {}, skippedForecastCount: 0, skippedForecastMillion: 0 };
+  if (!targetName) return { sheetFound: false, confirmedRows: [], monthlyBreakdown: {} };
 
   const raw = XLSX.utils.sheet_to_json(wb.Sheets[targetName], { header: 1, defval: '' });
-  if (!raw || !raw.length) { console.log('[하반기 매출 파싱]', targetName, '데이터가 없습니다.'); return { sheetFound: true, confirmedRows: [], monthlyBreakdown: {}, skippedForecastCount: 0, skippedForecastMillion: 0 }; }
+  if (!raw || !raw.length) { console.log('[하반기 매출 파싱]', targetName, '데이터가 없습니다.'); return { sheetFound: true, confirmedRows: [], monthlyBreakdown: {} }; }
 
   const findCol = (header, pattern) => header.findIndex(v => (pattern instanceof RegExp ? pattern.test(String(v ?? '').trim()) : String(v ?? '').trim() === pattern));
 
-  let cols = null;      // 가장 최근 "NO" 헤더행에서 파악한 컬럼 위치(블록마다 갱신)
-  let pending = [];     // 현재 블록에서 모은 유효 데이터 행(소계 행을 만나야 확정/예상이 결정됨)
+  let cols = null;  // 가장 최근 "NO" 헤더행에서 파악한 컬럼 위치(블록마다 갱신)
+  let headerCount = 0;
   const confirmedRows = [];
-  let skippedForecastCount = 0, skippedForecastMillion = 0;
-  let preJulyCount = 0, dateFailCount = 0;
+  const allMonthlyCount = {}; // 진단용: 상반기 포함 전체 월별 분포
+  let validOpRows = 0, preJulyCount = 0, dateFailCount = 0;
 
   for (let r = 0; r < raw.length; r++) {
     const row = raw[r] || [];
     const aVal = String(row[0] ?? '').trim().toUpperCase();
 
-    if (aVal === 'NO') {
+    if (aVal === 'NO' || aVal === 'NO.') {
+      headerCount++;
       cols = {
         code: findCol(row, /프로젝트.?코드/), name: findCol(row, '프로젝트명'), cust: findCol(row, /고객사/),
         rep: findCol(row, /매출실적영업대표/), actualDate: findCol(row, /매출실적일자/),
         product: findCol(row, /^제품$/), goods: findCol(row, /^상품$/), service: findCol(row, /^용역$/),
         maint: findCol(row, /유지.?관리|유지.?보수/), total: findCol(row, /^합계$/),
       };
-      continue;
-    }
-
-    // 소계 행 판정: 행 전체 텍스트에서 "N월 매출 소계"(확정) / "N월 매출 예상액"(예상) 문구를 찾는다.
-    const rowText = row.map(v => String(v ?? '').trim()).filter(Boolean).join(' ');
-    const isConfirmedSubtotal = /\d{2,4}\s*년?\s*\d{1,2}\s*월\s*매출\s*소계/.test(rowText);
-    const isForecastSubtotal  = /\d{2,4}\s*년?\s*\d{1,2}\s*월\s*매출\s*예상액/.test(rowText);
-    if (isConfirmedSubtotal || isForecastSubtotal) {
-      if (isForecastSubtotal) {
-        skippedForecastCount += pending.length;
-        skippedForecastMillion += pending.reduce((s, x) => s + x.amountWon, 0) / 1000000;
-      } else {
-        pending.forEach(x => confirmedRows.push(x));
-      }
-      pending = [];
+      console.log(`[하반기 매출 파싱] NO 헤더 ${headerCount}번째(행 ${r}) 컬럼 인덱스 →`, cols);
       continue;
     }
 
     if (!cols || cols.code < 0) continue; // 아직 컬럼 위치를 못 찾음
     const code = String(row[cols.code] ?? '').trim();
-    if (!/^OP-/i.test(code)) continue; // 유효 데이터 행만(소계/빈 행은 프로젝트코드가 없어 자동 제외)
+    if (!/^OP-/i.test(code)) continue; // 유효 데이터 행만(소계/빈 행/상태 행은 프로젝트코드가 없어 자동 제외)
 
     const actualDateObj = cols.actualDate >= 0 ? parseExcelDateFull(row[cols.actualDate]) : null;
     if (!actualDateObj) { dateFailCount++; continue; }
+    validOpRows++;
+    allMonthlyCount[actualDateObj.month] = (allMonthlyCount[actualDateObj.month] || 0) + 1;
     if (actualDateObj.month < 7) { preJulyCount++; continue; } // 상반기 혼입분 — 판정 기준은 매출실적일자
 
     const num = c => c >= 0 ? (Number(row[c]) || 0) : 0;
-    pending.push({
+    confirmedRows.push({
       code, name: cols.name >= 0 ? String(row[cols.name] || '').trim() : '', cust: cols.cust >= 0 ? String(row[cols.cust] || '').trim() : '',
       rep: cols.rep >= 0 ? String(row[cols.rep] || '').trim() : '',
       product: num(cols.product), goods: num(cols.goods), service: num(cols.service), maint: num(cols.maint),
       amountWon: num(cols.total), month: actualDateObj.month,
     });
   }
-  if (pending.length) console.warn('[하반기 매출 파싱] 소계 행 없이 종료된 블록', pending.length, '건 — 확정/예상 판정 불가로 제외');
 
   const monthlyBreakdown = {};
   confirmedRows.forEach(r => {
@@ -3367,11 +3357,13 @@ function parseH2SalesSheet(wb) {
   });
   const breakdownStr = Object.keys(monthlyBreakdown).sort((a, b) => a - b)
     .map(m => `${m}월 ${monthlyBreakdown[m].count}건 ${Math.round(monthlyBreakdown[m].total / 1000000 * 10) / 10}백만`).join(', ');
-  console.log('[하반기 매출 파싱] 월별 확정 건수/금액:', breakdownStr || '(없음)');
-  console.log('[하반기 매출 파싱] 예상(소계="매출 예상액")으로 판정되어 제외한 건수:', skippedForecastCount, '/ 금액(백만):', Math.round(skippedForecastMillion * 10) / 10);
+  const allBreakdownStr = Object.keys(allMonthlyCount).sort((a, b) => a - b).map(m => `${m}월 ${allMonthlyCount[m]}건`).join(', ');
+  console.log('[하반기 매출 파싱] NO 헤더 발견 횟수:', headerCount, '/ 매출실적일자 파싱 성공한 유효 OP- 행:', validOpRows);
+  console.log('[하반기 매출 파싱] 전체 월별 분포(상반기 포함, 진단용):', allBreakdownStr || '(없음)');
+  console.log('[하반기 매출 파싱] 확정(7월 이상) 월별 건수/금액:', breakdownStr || '(없음)');
   console.log('[하반기 매출 파싱] 7월 미만(상반기 혼입) 건너뜀:', preJulyCount, '건 / 매출실적일자 파싱 실패:', dateFailCount, '건');
 
-  return { sheetFound: true, confirmedRows, monthlyBreakdown, skippedForecastCount, skippedForecastMillion };
+  return { sheetFound: true, confirmedRows, monthlyBreakdown };
 }
 
 function getH2ConfirmedLastMonth() {
@@ -3492,7 +3484,7 @@ function parseSalesExcel(wb) {
     sheetName, hqHeaderFound: !!hqHdr, hqMonths, forecast,
     teamHeaderFound: !!teamHdr, teamRows,
     h2ConfirmedRows: h2.confirmedRows, h2SheetFound: h2.sheetFound,
-    h2MonthlyBreakdown: h2.monthlyBreakdown, h2SkippedForecastCount: h2.skippedForecastCount, h2SkippedForecastMillion: h2.skippedForecastMillion,
+    h2MonthlyBreakdown: h2.monthlyBreakdown,
   };
 }
 
