@@ -3320,11 +3320,14 @@ function parseH2SalesSheet(wb) {
 
     if (aVal === 'NO' || aVal === 'NO.') {
       headerCount++;
+      console.log(`[하반기 매출 파싱] NO 헤더 ${headerCount}번째(행 ${r}) 원본 텍스트:`, row.map((v, i) => `${i}=${v}`).join(', '));
+      // 실제 파일의 헤더 표기가 공백/개행 등으로 흔들릴 수 있어 단어 사이 임의 공백을 전부 허용(\s*)한다 —
+      // 정확히 일치하는 정규식을 쓰면 컬럼을 못 찾고, 그러면 이 시트의 모든 행이 조용히 누락된다.
       cols = {
-        code: findCol(row, /프로젝트.?코드/), name: findCol(row, '프로젝트명'), cust: findCol(row, /고객사/),
-        rep: findCol(row, /매출실적영업대표/), actualDate: findCol(row, /매출실적일자/),
-        product: findCol(row, /^제품$/), goods: findCol(row, /^상품$/), service: findCol(row, /^용역$/),
-        maint: findCol(row, /유지.?관리|유지.?보수/), total: findCol(row, /^합계$/),
+        code: findCol(row, /프로젝트\s*코드/), name: findCol(row, /프로젝트\s*명/), cust: findCol(row, /고객사/),
+        rep: findCol(row, /매출\s*실적\s*영업\s*대표/), actualDate: findCol(row, /매출\s*실적\s*일자/),
+        product: findCol(row, /^제품/), goods: findCol(row, /^상품/), service: findCol(row, /^용역/),
+        maint: findCol(row, /유지\s*관리|유지\s*보수/), total: findCol(row, /^합계/),
       };
       console.log(`[하반기 매출 파싱] NO 헤더 ${headerCount}번째(행 ${r}) 컬럼 인덱스 →`, cols);
       continue;
@@ -4059,8 +4062,11 @@ function computeForecastSummary(scope) {
   const sectionMatch = Math.abs(sectionSumH2 - h2TotalMillion) < VALIDATION_EPS;
   const monthlyMatch = Math.abs(monthlySumH2 - h2TotalMillion) < VALIDATION_EPS;
 
-  console.log('[확정/예상 구간]', { scope, 확정마지막월: confirmedLastMonth, 상반기확정_억: Math.round(h1Eok * 10) / 10, 하반기확정_억: Math.round(h2ConfirmedEok * 10) / 10, 하반기확정건수: h2ConfirmedCount });
-  console.log('[매출예상 중복 제거]', scope, '확정 구간과 겹쳐 제외한 건수:', dedupCount, '/ 금액(백만):', Math.round(dedupMillion * 10) / 10);
+  console.log('[확정/발행/예상 구간 판정]', {
+    scope, 확정실적_마지막월: h1LastMonth || '없음', 발행실적_마지막월: confirmedLastMonth || '없음',
+    확정실적_억: Math.round(h1Eok * 10) / 10, 발행실적_억: Math.round(h2ConfirmedEok * 10) / 10, 발행실적건수: h2ConfirmedCount,
+  });
+  console.log('[매출예상 중복 제거]', scope, '확정·발행 구간과 겹쳐 제외한 건수:', dedupCount, '/ 금액(백만):', Math.round(dedupMillion * 10) / 10);
   console.log('[검증] 구간별 전체/예상구간/2027년이후 (백만원)', PIPELINE_SECTIONS.map(id => ({
     구간: PIPELINE_LABELS[id], 건수: sectionCounts[id],
     전체: Math.round(sectionAmounts[id] * 10) / 10,
@@ -4106,7 +4112,7 @@ function renderSalesSummary(scope, forecastData) {
   const deltaStr = (deltaPositive ? '+' : '-') + Math.abs(s.deltaEok).toFixed(1) + '억';
 
   const h1Sub = s.h1LastMonth > 0 ? `2026년 ${s.h1LastMonth}월까지 확정` : '확정 실적 없음';
-  const h2Sub = `확정 ${s.h2ConfirmedEok.toFixed(1)}억 + 예상 ${s.h2ForecastEok.toFixed(1)}억`;
+  const h2Sub = `발행 ${s.h2ConfirmedEok.toFixed(1)}억 + 예상 ${s.h2ForecastEok.toFixed(1)}억`;
 
   document.getElementById('rev2-summary-row').innerHTML = `
     <div class="summary-card"><div class="s-label">연간 목표</div><div class="s-value">${s.annualTargetEok.toFixed(1)}억</div></div>
@@ -4260,26 +4266,30 @@ const todayLinePlugin = {
   }
 };
 
-// 확정/예상 경계에 얇은 세로 구분선을 그리는 플러그인 — opts.idx(0-based, 확정 마지막 월)와 그 다음 월 사이에 표시
+// 구간 경계(확정↔발행, 발행↔예상)에 얇은 세로 구분선을 그리는 플러그인 — opts.idxs(0-based 인덱스 배열, 각 인덱스와
+// 그 다음 월 사이에 표시)를 순회하며 여러 개를 동시에 그릴 수 있다. null/음수 인덱스는 건너뛴다.
 const h1h2DividerPlugin = {
   id: 'h1h2Divider',
   afterDraw(chart) {
     const opts = chart.options.plugins && chart.options.plugins.h1h2Divider;
-    if (!opts || !opts.show || opts.idx == null) return;
+    if (!opts || !opts.show || !Array.isArray(opts.idxs)) return;
     const { ctx, chartArea, scales } = chart;
-    const x1 = scales.x.getPixelForValue(opts.idx);
-    const x2 = scales.x.getPixelForValue(opts.idx + 1);
-    if (x1 == null || x2 == null || isNaN(x1) || isNaN(x2)) return;
-    const x = (x1 + x2) / 2;
-    ctx.save();
-    ctx.strokeStyle = '#3a3f5c';
-    ctx.setLineDash([2, 3]);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, chartArea.top);
-    ctx.lineTo(x, chartArea.bottom);
-    ctx.stroke();
-    ctx.restore();
+    opts.idxs.forEach(idx => {
+      if (idx == null || idx < 0) return;
+      const x1 = scales.x.getPixelForValue(idx);
+      const x2 = scales.x.getPixelForValue(idx + 1);
+      if (x1 == null || x2 == null || isNaN(x1) || isNaN(x2)) return;
+      const x = (x1 + x2) / 2;
+      ctx.save();
+      ctx.strokeStyle = '#3a3f5c';
+      ctx.setLineDash([2, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+      ctx.restore();
+    });
   }
 };
 
@@ -4386,12 +4396,12 @@ document.addEventListener('keydown', e => {
 // 백만원 단위 원본 그대로 반환 — 차트는 eok로, 엑셀은 백만원 그대로 변환해서 쓴다(둘 다 이 함수 하나만 호출, 재계산 없음).
 function buildChartArrays(scope, series, forecastData) {
   const hasInput = !!(forecastData && forecastData.inputCount > 0);
-  const confirmedLastMonth = forecastData ? forecastData.confirmedLastMonth : getConfirmedLastMonth();
+  const { confirmedLastMonth, h1LastMonth } = computeConfirmedTotals(scope); // 발행/확정 마지막 월 — 인벤토리 여부와 무관하게 항상 동일한 값
 
   const cumTargetMillion = series.map(s => cumulativeTargetAt(scope, s.month)); // 백만원, 원본 그대로(변환 없음)
-  const cumActualWon = buildCumulativeActual(series); // series는 확정 구간(1~확정 마지막 월)에만 값이 있으므로 그대로 확정 누적이 됨
+  const cumActualWon = buildCumulativeActual(series); // series는 확정+발행 구간(1~발행 마지막 월)에만 값이 있으므로 그대로 누적이 됨
 
-  // 예상 누적: 확정 마지막 월 지점(확정선과 겹치는 앵커)에서 시작해 그 이후 달의 매출예상을 누적(백만원)
+  // 예상 누적: 발행 마지막 월 지점(발행선과 겹치는 앵커)에서 시작해 그 이후 달의 매출예상을 누적(백만원)
   let pipelineMillion = null;
   if (hasInput) {
     pipelineMillion = new Array(12).fill(null);
@@ -4402,31 +4412,46 @@ function buildChartArrays(scope, series, forecastData) {
       pipelineMillion[m - 1] = running;
     }
   }
-  return { confirmedLastMonth, cumTargetMillion, cumActualWon, pipelineMillion };
+  return { confirmedLastMonth, h1LastMonth, cumTargetMillion, cumActualWon, pipelineMillion };
 }
 
-// [메인 차트] 누적 실적 + 파이프라인 반영 전망 + 누적 목표
-// 2-구간 차트: 확정(1~확정 마지막 월, 파란 실선) / 예상(확정 마지막 월 이후, 초록 점선).
-// confirmedLastMonth·h2ForecastEok 등은 모두 forecastData(computeForecastSummary)에서 그대로 읽어온다 — 별도 재계산 없음.
+// [메인 차트] 확정 실적 + 발행 실적 + 매출 예상 + 누적 목표
+// 3-구간 차트: 확정(1~확정 마지막 월, 파란 실선) / 발행(확정 마지막 월~발행 마지막 월, 초록 실선) /
+// 예상(발행 마지막 월 이후, 초록 점선). confirmedLastMonth·h2ForecastEok 등은 모두 forecastData에서 그대로 읽어온다.
 function renderSalesChart1(scope, series, forecastData) {
   const ctx = document.getElementById('rev2-chart1').getContext('2d');
   if (salesChart1) salesChart1.destroy();
 
   const hasInput = !!(forecastData && forecastData.inputCount > 0);
   const arrs = buildChartArrays(scope, series, forecastData);
-  const confirmedLastMonth = arrs.confirmedLastMonth;
+  const { confirmedLastMonth, h1LastMonth } = arrs;
 
   const cumTargetEok = arrs.cumTargetMillion.map(millionToEok);
-  const confirmedArr = arrs.cumActualWon.map(v => v == null ? null : wonToEok(v));
+  const cumActualEok = arrs.cumActualWon.map(v => v == null ? null : wonToEok(v)); // 확정+발행 통합 누적(연속된 원본)
   const pipelineArr = arrs.pipelineMillion ? arrs.pipelineMillion.map(v => v == null ? null : millionToEok(v)) : null;
   const pipelineStartIdx = confirmedLastMonth - 1; // 0-based, 클릭 가능 판정 기준(이 인덱스보다 큰 월만 클릭 가능)
 
+  // ① 확정 실적(파랑): 1~확정 마지막 월(h1LastMonth)까지만 표시
+  const confirmedArr = cumActualEok.map((v, i) => (h1LastMonth >= 1 && i <= h1LastMonth - 1 ? v : null));
+
+  // ② 발행 실적(초록 실선): 확정 마지막 월 지점(파란선과 겹치는 앵커, 없으면 7월부터)에서 발행 마지막 월까지
+  let issuedArr = null;
+  const hasIssuedSeg = confirmedLastMonth > h1LastMonth;
+  if (hasIssuedSeg) {
+    const segStartIdx = h1LastMonth >= 1 ? (h1LastMonth - 1) : 6; // 확정 앵커가 없으면(H1 데이터 없음) 7월(0-based 6)부터 바로 시작
+    issuedArr = cumActualEok.map((v, i) => (i >= segStartIdx && i <= confirmedLastMonth - 1) ? v : null);
+  }
+
   const datasets = [
-    { label: '누적 실적', data: confirmedArr, borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.10)',
+    { label: '확정 실적', data: confirmedArr, borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.10)',
       borderWidth: 2, fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 },
   ];
+  if (issuedArr) {
+    datasets.push({ label: '발행 실적', data: issuedArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
+      borderWidth: 2, fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 });
+  }
   if (pipelineArr) {
-    datasets.push({ label: '실적 예상', data: pipelineArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
+    datasets.push({ label: '매출 예상', data: pipelineArr, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.12)',
       borderWidth: 2, borderDash: [5, 4], fill: true, spanGaps: false, tension: 0.1, pointRadius: 3 });
   }
   datasets.push({ label: '누적 목표', data: cumTargetEok, borderColor: '#e34948', backgroundColor: 'transparent',
@@ -4435,6 +4460,11 @@ function renderSalesChart1(scope, series, forecastData) {
   // "오늘" 세로선 — 차트의 연도(2026)와 시스템 연도가 같을 때만 표시
   const today = new Date();
   const todayMonthIdx = today.getFullYear() === 2026 ? today.getMonth() : null; // 0-based
+
+  // 구간 경계 세로 구분선: 확정↔발행(h1LastMonth), 발행(또는 확정)↔예상(confirmedLastMonth) — 실제로 경계가 존재할 때만
+  const dividerIdxs = [];
+  if (h1LastMonth >= 1 && h1LastMonth < confirmedLastMonth && h1LastMonth <= 11) dividerIdxs.push(h1LastMonth - 1);
+  if (confirmedLastMonth >= 1 && confirmedLastMonth <= 11) dividerIdxs.push(confirmedLastMonth - 1);
 
   salesChart1 = new Chart(ctx, {
     type: 'line',
@@ -4458,7 +4488,7 @@ function renderSalesChart1(scope, series, forecastData) {
       plugins: {
         legend: { display: false },
         todayLine: todayMonthIdx != null ? { monthIndex: todayMonthIdx, label: `오늘 (${todayMonthIdx + 1}월)` } : null,
-        h1h2Divider: { show: confirmedLastMonth >= 1 && confirmedLastMonth <= 11, idx: confirmedLastMonth - 1 },
+        h1h2Divider: { show: dividerIdxs.length > 0, idxs: dividerIdxs },
         tooltip: {
           backgroundColor: '#1a1d27', borderColor: '#2e3350', borderWidth: 1,
           titleColor: '#e8eaf6', bodyColor: '#8890b5',
@@ -4468,21 +4498,28 @@ function renderSalesChart1(scope, series, forecastData) {
     }
   });
 
-  // 커스텀 HTML 범례 — 확정 실적/실적 예상 금액 모두 forecastData 필드를 그대로 사용(체크박스 라벨·카드와 동일 소스)
+  // 커스텀 HTML 범례 — 확정/발행/예상 금액 모두 forecastData 필드를 그대로 사용(체크박스 라벨·카드와 동일 소스)
   const annualTargetEok = millionToEok(annualTargetTotal(scope));
-  const actualNowEok = forecastData ? (forecastData.h1Eok + forecastData.h2ConfirmedEok) : 0;
-  let legendHtml = `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#2a78d6"></span>누적 실적 ${actualNowEok.toFixed(1)}억</span>`;
+  const h1Eok = forecastData ? forecastData.h1Eok : 0;
+  const h2ConfirmedEok = forecastData ? forecastData.h2ConfirmedEok : 0;
+  let legendHtml = `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#2a78d6"></span>확정 실적 ${h1Eok.toFixed(1)}억</span>`;
+  if (hasIssuedSeg) {
+    legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#1baf7a"></span>발행 실적 ${h2ConfirmedEok.toFixed(1)}억</span>`;
+  }
   if (hasInput) {
     const sectionLabelStr = PIPELINE_SECTIONS.filter(id => PIPELINE_PROB_FILTER[id]).map(id => PROB_SHORT_LABELS[id]).join('·');
-    legendHtml += `<span class="rev2-legend-item">+ <span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>실적 예상 ${forecastData.h2ForecastEok.toFixed(1)}억 (${sectionLabelStr}, 점선)</span>`;
+    legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot-dashed" style="border-color:#1baf7a"></span>매출 예상 ${forecastData.h2ForecastEok.toFixed(1)}억 (${sectionLabelStr}, 점선)</span>`;
   }
   legendHtml += `<span class="rev2-legend-item"><span class="rev2-legend-dot" style="background:#e34948"></span>누적 목표 ${annualTargetEok.toFixed(1)}억</span>`;
   document.getElementById('rev2-main-legend').innerHTML = legendHtml;
 
-  // 확정 실적 마지막 월을 자동 인식해 상단에 표시(회의자료에 있는 데이터 기준 — 오늘 날짜로 고정 계산하지 않음)
+  // 확정/발행 실적 마지막 월을 자동 인식해 범례 아래에 표시(회의자료에 있는 데이터 기준 — 오늘 날짜로 고정 계산하지 않음)
   const statusEl = document.getElementById('rev2-actual-status-line');
-  statusEl.textContent = confirmedLastMonth >= 1 ? `확정 실적: 2026년 ${confirmedLastMonth}월까지` : '';
-  statusEl.style.display = confirmedLastMonth >= 1 ? '' : 'none';
+  const statusParts = [];
+  if (h1LastMonth >= 1) statusParts.push(`확정 실적: 2026년 ${h1LastMonth}월까지`);
+  if (hasIssuedSeg) statusParts.push(`발행 실적: 2026년 ${confirmedLastMonth}월까지`);
+  statusEl.textContent = statusParts.join(' · ');
+  statusEl.style.display = statusParts.length ? '' : 'none';
 
   document.getElementById('rev2-forecast-month-footnote').style.display = 'none'; // "당월 예상액" 개념 폐지 — 항상 숨김
 
@@ -4531,7 +4568,7 @@ function forecastEntryReasons(code, section, monthStr, confirmedLastMonth) {
   const reasons = [];
   const y = parseInt(monthStr.split('-')[0], 10), m = parseInt(monthStr.split('-')[1], 10);
   if (y !== 2026) reasons.push('2027년 이후');
-  else if (m <= confirmedLastMonth) reasons.push('확정 구간 중복');
+  else if (m <= confirmedLastMonth) reasons.push('확정·발행 구간 중복');
   if (isRevenueEntryExcluded(code, monthStr)) reasons.push('수동 제외');
   if (!PIPELINE_PROB_FILTER[section]) reasons.push('확도 구간 미선택');
   return reasons;
@@ -4560,9 +4597,9 @@ async function downloadRevenueTrendExcel() {
   [
     ['연간 목표', forecastData.annualTargetEok],
     ['26년 총 누적예상 실적', forecastData.totalExpectedEok],
-    ['상반기 누적실적', forecastData.h1Eok],
-    ['하반기 확정실적', forecastData.h2ConfirmedEok],
-    ['하반기 예상실적', forecastData.h2ForecastEok],
+    ['확정 실적 (1~6월)', forecastData.h1Eok],
+    ['발행 실적 (7월~)', forecastData.h2ConfirmedEok],
+    ['매출 예상 (8월~)', forecastData.h2ForecastEok],
     ['목표 대비 증감', forecastData.deltaEok],
   ].forEach(([label, val]) => {
     const row = ws1.addRow([label, val]);
@@ -4576,29 +4613,33 @@ async function downloadRevenueTrendExcel() {
   const boldRow = row => { row.getCell(1).font = { bold: true }; return row; };
   boldRow(ws1.addRow(['구분 기준', '']));
   ws1.addRow(['스코프', scope === '팀1' ? '공공영업1팀' : '영업본부']);
-  ws1.addRow(['확정 실적 마지막 월', forecastData.confirmedLastMonth >= 1 ? `2026년 ${forecastData.confirmedLastMonth}월` : '없음']);
+  ws1.addRow(['확정 실적 마지막 월', forecastData.h1LastMonth >= 1 ? `2026년 ${forecastData.h1LastMonth}월` : '없음']);
+  ws1.addRow(['발행 실적 마지막 월', forecastData.confirmedLastMonth >= 1 ? `2026년 ${forecastData.confirmedLastMonth}월` : '없음']);
   const checkedLabels = PIPELINE_SECTIONS.filter(id => PIPELINE_PROB_FILTER[id]).map(id => PIPELINE_LABELS[id]).join(', ') || '(선택 없음)';
   ws1.addRow(['적용 확도 구간', checkedLabels]);
   ws1.addRow(['2027년 이후 제외', `${forecastData.excludedCount}건 ${millionToEok(forecastData.excludedMillion).toFixed(1)}억`]);
   ws1.addRow(['수동 제외 건', `${forecastData.manualExcludedCount}건 ${millionToEok(forecastData.manualExcludedMillion).toFixed(1)}억`]);
-  ws1.addRow(['확정 구간 중복 제외', `${forecastData.dedupCount}건 ${millionToEok(forecastData.dedupMillion).toFixed(1)}억`]);
+  ws1.addRow(['확정·발행 구간 중복 제외', `${forecastData.dedupCount}건 ${millionToEok(forecastData.dedupMillion).toFixed(1)}억`]);
   if (scope === '팀1') {
     ws1.addRow(['오수택 포함 여부', INCLUDE_OSTAEK ? '포함' : '미포함']);
     ws1.addRow(['소속 미분류 포함 여부', INCLUDE_UNASSIGNED ? '포함' : '미포함']);
   }
   ws1.addRow(['생성 시각', new Date().toLocaleString('ko-KR')]);
 
-  // ── 시트2: 월별 ──
+  // ── 시트2: 월별 — 월 | 확정실적(1~6월) | 발행실적(7월~) | 매출예상 | 누적(확정+발행+예상, 차트와 동일 선) | 누적목표 ──
   const ws2 = wb.addWorksheet('월별');
-  ws2.columns = [{ width: 8 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 20 }];
-  applyHeaderStyle(ws2.addRow(['월', '확정실적(백만)', '매출예상(백만)', '누적실적(백만)', '누적목표(백만)', '누적(실적+예상)(백만)']));
+  ws2.columns = [{ width: 8 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }];
+  applyHeaderStyle(ws2.addRow(['월', '확정실적(백만)', '발행실적(백만)', '매출예상(백만)', '누적(백만)', '누적목표(백만)']));
   for (let m = 1; m <= 12; m++) {
-    const confirmedMillion = series[m - 1].total != null ? wonToMillion(series[m - 1].total) : null;
+    const monthTotalMillion = series[m - 1].total != null ? wonToMillion(series[m - 1].total) : null;
+    const confirmedMillion = (m <= arrs.h1LastMonth) ? monthTotalMillion : null;
+    const issuedMillion = (m > arrs.h1LastMonth && m <= arrs.confirmedLastMonth) ? monthTotalMillion : null;
     const forecastMillion = forecastData.monthlyMillion[m] || 0;
     const cumActualMillion = arrs.cumActualWon[m - 1] != null ? wonToMillion(arrs.cumActualWon[m - 1]) : null;
     const cumTargetMillionVal = arrs.cumTargetMillion[m - 1];
     const combinedMillion = arrs.pipelineMillion ? arrs.pipelineMillion[m - 1] : null;
-    const row = ws2.addRow([`${m}월`, confirmedMillion, forecastMillion, cumActualMillion, cumTargetMillionVal, combinedMillion]);
+    const cumMillion = combinedMillion != null ? combinedMillion : cumActualMillion; // 차트의 연속된 누적선과 동일한 값
+    const row = ws2.addRow([`${m}월`, confirmedMillion, issuedMillion, forecastMillion, cumMillion, cumTargetMillionVal]);
     [2, 3, 4, 5, 6].forEach(ci => { row.getCell(ci).numFmt = '#,##0.0'; });
   }
 
@@ -5056,10 +5097,10 @@ function renderValidationLine(forecastData) {
 
   const clm = forecastData.confirmedLastMonth;
   let h2Label = '';
-  if (clm === 7) h2Label = ` + 7월 ${forecastData.h2ConfirmedEok.toFixed(1)}억`;
-  else if (clm > 7) h2Label = ` + 하반기(7~${clm}월) ${forecastData.h2ConfirmedEok.toFixed(1)}억`;
+  if (clm === 7) h2Label = ` + 발행(7월) ${forecastData.h2ConfirmedEok.toFixed(1)}억`;
+  else if (clm > 7) h2Label = ` + 발행(7~${clm}월) ${forecastData.h2ConfirmedEok.toFixed(1)}억`;
   const confirmedTotalEok = forecastData.h1Eok + forecastData.h2ConfirmedEok;
-  const line2 = `확정 실적: 상반기 ${forecastData.h1Eok.toFixed(1)}억${h2Label} = ${confirmedTotalEok.toFixed(1)}억`;
+  const line2 = `실적 합계: 확정 ${forecastData.h1Eok.toFixed(1)}억${h2Label} = ${confirmedTotalEok.toFixed(1)}억`;
 
   el.innerHTML = `${line1}<br>${line2}`;
 }
