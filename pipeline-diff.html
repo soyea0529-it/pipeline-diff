@@ -1447,12 +1447,21 @@ function normalizeCellText(v) {
 }
 
 // 공용 헤더 텍스트 탐색 유틸 — 컬럼 인덱스는 항상 헤더 텍스트로 찾고, 고정 인덱스는 쓰지 않는다.
+// 파일마다 "프로젝트코드"/"프로젝트 코드"처럼 내부 공백 유무가 다르고, 줄바꿈·전각공백이 섞인 헤더("수주금액 \n(단위:백만원)")도
+// 있어 비교 전에 모든 공백류를 제거해 정규화한다(괄호와 그 안의 내용은 그대로 유지 — 부분일치(includes)로 찾으므로
+// "프로젝트명(수주계약명)"처럼 괄호가 붙어 있어도 "프로젝트명"이 그 안에 포함되어 있으면 정상적으로 찾아진다).
+function normalizeHeaderText(v) {
+  return String(v ?? '').replace(/[\s　﻿\xA0]+/g, '');
+}
 function findHeaderCol(rows, pattern) {
   for (const row of rows) {
     for (let i = 0; i < row.length; i++) {
-      const v = String(row[i] || '').trim();
-      if (!v) continue;
-      if (pattern instanceof RegExp ? pattern.test(v) : v.includes(pattern)) return i;
+      const raw = row[i];
+      if (raw == null || raw === '') continue;
+      const norm = normalizeHeaderText(raw);
+      if (!norm) continue;
+      const hit = pattern instanceof RegExp ? pattern.test(norm) : norm.includes(normalizeHeaderText(pattern));
+      if (hit) return i;
     }
   }
   return -1;
@@ -1460,8 +1469,23 @@ function findHeaderCol(rows, pattern) {
 function findHeaderColBoth(rows, a, b) {
   for (const row of rows) {
     for (let i = 0; i < row.length; i++) {
-      const v = String(row[i] || '').trim();
-      if (v.includes(a) && v.includes(b)) return i;
+      const raw = row[i];
+      if (raw == null || raw === '') continue;
+      const norm = normalizeHeaderText(raw);
+      if (norm.includes(normalizeHeaderText(a)) && norm.includes(normalizeHeaderText(b))) return i;
+    }
+  }
+  return -1;
+}
+// 제품/상품/용역/합계처럼 짧은 단어는 부분일치(findHeaderCol)로 찾으면 다른 컬럼명에 우연히 포함되어
+// 오매칭될 수 있어, 정규화 후 완전히 일치하는 셀만 인정하는 전용 탐색 함수를 별도로 둔다.
+function findHeaderColExact(rows, keyword) {
+  const target = normalizeHeaderText(keyword);
+  for (const row of rows) {
+    for (let i = 0; i < row.length; i++) {
+      const raw = row[i];
+      if (raw == null || raw === '') continue;
+      if (normalizeHeaderText(raw) === target) return i;
     }
   }
   return -1;
@@ -3145,11 +3169,11 @@ function parseH1RevenueSheet(wb, fileName) {
   let colCode        = findHeaderCol([row2], /프로젝트\s*코드/);
   const colName      = findHeaderCol([row2], '프로젝트명');
   const colCust      = findHeaderCol([row2], /고객사/);
-  const colProduct   = findHeaderCol([row2], '제품');
-  const colGoods     = findHeaderCol([row2], '상품');
-  const colService   = findHeaderCol([row2], '용역');
+  const colProduct   = findHeaderColExact([row2], '제품');
+  const colGoods     = findHeaderColExact([row2], '상품');
+  const colService   = findHeaderColExact([row2], '용역');
   const colMaint     = findHeaderCol([row2], /유지/);
-  const colTotal     = findHeaderCol([row2], '합계');
+  const colTotal     = findHeaderColExact([row2], '합계');
   const colRep       = findHeaderCol([row2], /매출실적영업대표|영업대표/);
   const colTeam      = findHeaderCol([row2], '팀실적');
   const colActualDate = findHeaderCol([row2], '매출실적일자'); // 월 구분 기준(매출청구일이 아님)
@@ -3174,7 +3198,7 @@ function parseH1RevenueSheet(wb, fileName) {
   }
 
   let dateFailCount = 0;
-  const num = (r, col) => col >= 0 ? (Number(r[col]) || 0) : 0;
+  const num = (r, col) => col >= 0 ? toNum(r[col]) : 0; // 셀 값이 문자열이어도 안전하게 숫자로 변환
   const rows = dataRows.map(r => {
     // 매출실적일자는 Date 객체/엑셀 일련번호/문자열("2026-01-27") 모두 올 수 있어 parseExcelDateFull로 전부 처리
     const dateObj = colActualDate >= 0 ? parseExcelDateFull(r[colActualDate]) : null;
@@ -3186,7 +3210,7 @@ function parseH1RevenueSheet(wb, fileName) {
       team: colTeam >= 0 ? String(r[colTeam] || '').trim() : '',
       rep: colRep >= 0 ? String(r[colRep] || '').trim() : '',
       product: num(r, colProduct), goods: num(r, colGoods), service: num(r, colService), maint: num(r, colMaint),
-      amountWon: colTotal >= 0 ? (Number(r[colTotal]) || 0) : 0,
+      amountWon: num(r, colTotal),
       actualMonth: dateObj ? dateObj.month : null,
       actualYear: dateObj ? dateObj.year : null,
     };
@@ -3288,17 +3312,16 @@ function findTeamDetailHeader(raw) {
   for (let r = 0; r < raw.length; r++) {
     if (String(raw[r][0] ?? '').trim().toUpperCase() === 'NO') {
       const header = raw[r];
-      const findCol = pattern => header.findIndex(v => pattern.test(String(v ?? '').trim()));
       return {
         rowIdx:   r,
-        code:     findCol(/프로젝트.?코드/),
-        billDate: findCol(/매출.?청구일/),
-        product:  findCol(/^제품$/),
-        goods:    findCol(/^상품$/),
-        service:  findCol(/^용역$/),
-        maint:    findCol(/유지.?관리|유지.?보수/),
-        total:    findCol(/^합계$/),
-        rep:      findCol(/매출실적영업대표/),
+        code:     findHeaderCol([header], '프로젝트코드'),
+        billDate: findHeaderCol([header], '매출청구일'),
+        product:  findHeaderColExact([header], '제품'),
+        goods:    findHeaderColExact([header], '상품'),
+        service:  findHeaderColExact([header], '용역'),
+        maint:    findHeaderCol([header], /유지관리|유지보수/),
+        total:    findHeaderColExact([header], '합계'),
+        rep:      findHeaderCol([header], '매출실적영업대표'),
       };
     }
   }
@@ -3558,14 +3581,19 @@ function parseSalesMgmtSheet(wb, fileName) {
   if (!raw || raw.length < 3) { console.warn('[매출관리 목록 파싱]', fileName, '데이터가 없습니다.'); return []; }
 
   const headerRow = raw[1] || []; // 1-based row2 = 0-based index 1
-  const findCol = pattern => headerRow.findIndex(v => pattern.test(String(v ?? '').trim()));
+  // 실제 파일은 "프로젝트 코드"처럼 헤더 중간에 공백이 섞여 있어(공용 findHeaderCol/findHeaderColExact가
+  // 정규화 후 비교) 부분일치는 findHeaderCol, 제품/상품/용역/합계처럼 짧은 단어는 오매칭 방지를 위해
+  // findHeaderColExact(완전일치)를 사용한다.
   const cols = {
-    code: findCol(/프로젝트\s*코드/), name: findCol(/프로젝트명|수주계약명/), cust: findCol(/고객사/),
-    billDate: findCol(/매출\s*청구일/),
-    product: findCol(/^제품/), goods: findCol(/^상품/), service: findCol(/^용역/), maint: findCol(/유지\s*관리|유지\s*보수/),
-    total: findCol(/^합계/), rep: findCol(/매출\s*실적\s*영업\s*대표/), actualDate: findCol(/매출\s*실적\s*일자/),
+    code: findHeaderCol([headerRow], '프로젝트코드'), name: findHeaderCol([headerRow], /프로젝트명|수주계약명/), cust: findHeaderCol([headerRow], '고객사'),
+    billDate: findHeaderCol([headerRow], '매출청구일'),
+    product: findHeaderColExact([headerRow], '제품'), goods: findHeaderColExact([headerRow], '상품'), service: findHeaderColExact([headerRow], '용역'),
+    maint: findHeaderCol([headerRow], /유지관리|유지보수/),
+    total: findHeaderColExact([headerRow], '합계'), rep: findHeaderCol([headerRow], '매출실적영업대표'), actualDate: findHeaderCol([headerRow], '매출실적일자'),
   };
-  console.log('[매출관리 목록 파싱]', fileName, '컬럼 인덱스 →', cols);
+  console.log('[매출관리 목록 파싱]', fileName, '헤더 원본:', headerRow.map((v, i) => `${i}=${v}`).join(', '));
+  console.log('[매출관리 목록 파싱]', fileName, '헤더 정규화:', headerRow.map((v, i) => `${i}=${normalizeHeaderText(v)}`).join(', '));
+  console.log('[매출관리 목록 파싱]', fileName, '컬럼 매칭 결과:', Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, v >= 0 ? v : '실패'])));
   if (cols.code < 0) { console.warn('[매출관리 목록 파싱]', fileName, '프로젝트코드 컬럼을 찾지 못했습니다.'); return []; }
   if (cols.actualDate < 0) console.warn('[매출관리 목록 파싱]', fileName, '매출실적일자 컬럼을 찾지 못했습니다.');
 
@@ -3577,7 +3605,7 @@ function parseSalesMgmtSheet(wb, fileName) {
     if (!/^OP-/i.test(code)) continue; // 유효 행만(프로젝트코드가 'OP-'로 시작)
     const dateObj = cols.actualDate >= 0 ? parseExcelDateFull(rr[cols.actualDate]) : null;
     if (!dateObj) { dateFailCount++; continue; }
-    const num = c => c >= 0 ? (Number(rr[c]) || 0) : 0;
+    const num = c => c >= 0 ? toNum(rr[c]) : 0; // 셀 값이 문자열('2717795.0')이어도 안전하게 숫자로 변환
     rows.push({
       code, name: cols.name >= 0 ? String(rr[cols.name] || '').trim() : '', cust: cols.cust >= 0 ? String(rr[cols.cust] || '').trim() : '',
       rep: cols.rep >= 0 ? String(rr[cols.rep] || '').trim() : '',
