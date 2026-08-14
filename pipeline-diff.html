@@ -461,6 +461,10 @@
   .rev2-ostaek-note { font-size: 11px; color: var(--text-sub); margin-left: 6px; }
   .rev2-h1h2-summary-bar { font-size: 13px; color: var(--text-sub); margin: 4px 0 12px; }
   .rev2-h1-status-badge { font-size: 12px; font-weight: 500; margin-left: 10px; }
+  .latest-inv-status-ok { color: var(--up); }
+  .latest-inv-status-none { color: var(--text-sub); }
+  .rev2-inv-source-line { font-size: 12px; color: var(--text-sub); margin: 0 0 6px; line-height: 1.6; }
+  .rev2-inv-source-line.warn { color: #eda100; }
   .rev2-validation-line { font-size: 11px; color: var(--text-sub); margin-top: 14px; }
 
   /* ── 매출 예상 사업 목록 팝업 ───────────────────────────────────────── */
@@ -774,6 +778,7 @@
           <div class="rev2-prob-filter-row" id="rev2-prob-filter-row"></div>
         </div>
 
+        <div class="rev2-inv-source-line" id="rev2-inv-source-line"></div>
         <div class="rev2-h1h2-summary-bar" id="rev2-h1h2-summary-bar" style="display:none"></div>
         <div class="summary-row rev2-summary-row" id="rev2-summary-row"></div>
 
@@ -918,6 +923,27 @@
         </div>
       </div>
 
+      <div class="chart-card" id="latest-inv-card">
+        <div class="rev2-forecast-header" onclick="toggleLatestInvSection()">
+          <span class="chart-card-title" style="margin-bottom:0">최신 인벤토리 수동 업로드 (선택) <span class="rev2-h1-status-badge" id="latest-inv-status-badge"></span></span>
+          <span class="rev2-forecast-toggle-icon" id="latest-inv-toggle-icon">▸</span>
+        </div>
+        <div id="latest-inv-body" style="display:none">
+          <div class="inv-bulk-zone" id="latest-inv-bulk-zone">
+            <input type="file" accept=".xlsx,.xls" multiple id="latest-inv-bulk-input" style="display:none">
+            <div class="inv-bulk-icon">📦</div>
+            <div class="inv-bulk-label">최신 인벤토리 파일 한번에 올리기</div>
+            <div class="inv-bulk-hint">드래그하거나 클릭하여 여러 파일 선택 (100% / 90% / 75% / 50%(F)만 인식)</div>
+          </div>
+          <div class="inv-bulk-msg" id="latest-inv-bulk-msg"></div>
+          <div class="inv-slot-list" id="latest-inv-slots"></div>
+          <div class="btn-row" style="margin-top:8px">
+            <button class="btn btn-secondary" onclick="removeLatestInv()">삭제</button>
+            <button class="btn btn-secondary" onclick="resetLatestInvSlots()">초기화</button>
+          </div>
+        </div>
+      </div>
+
       <div class="chart-card" id="rev2-h1-card">
         <div class="rev2-forecast-header" onclick="toggleH1Section()">
           <span class="chart-card-title" style="margin-bottom:0">상반기 확정 실적 (1회 등록) <span class="rev2-h1-status-badge" id="rev2-h1-status-badge"></span></span>
@@ -992,11 +1018,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildInvUploadSlots();
   setupInvBulkZone('prev');
   setupInvBulkZone('curr');
+  buildLatestInvSlots();
+  setupLatestInvBulkZone();
   // restoreInvFiles()가 데이터를 찾으면 즉시 runInvCompare()를 동기 실행하므로,
   // 그 안에서 호출되는 syncUnmatched100Seen()이 올바른 이전 선택값을 보도록 먼저 복원한다.
   await restoreUnmatched100Excluded();
   await restoreUnmatched100Seen();
   await restoreExcludedRevenueItems();
+  await restoreLatestInv(); // getForecastInvSource()의 우선순위 판단에 쓰이므로 restoreInvFiles()보다 먼저 복원
   restoreInvFiles();
   setupSalesUpload();
   setupH1RevenueUpload();
@@ -1734,7 +1763,9 @@ async function clearAllStoredData() {
   CONFIRMED_H1_REVENUE_ROWS = [];
   CONFIRMED_H1_REVENUE_FILENAME = '';
   CONFIRMED_H1_REVENUE_REGISTERED_AT = null;
+  clearLatestInvState();
   renderH1RevenueUI();
+  renderLatestInvHeaderStatus();
   if (typeof renderForecastSection === 'function') renderForecastSection();
   try {
     if (window.idbKeyval) {
@@ -1747,6 +1778,7 @@ async function clearAllStoredData() {
       await idbKeyval.del(UNMATCHED_100_SEEN_KEY);
       await idbKeyval.del(CONFIRMED_H1_REVENUE_STORAGE_KEY);
       await idbKeyval.del(EXCLUDED_REVENUE_ITEMS_KEY);
+      await idbKeyval.del(LATEST_INV_STORAGE_KEY);
     }
   } catch (e) { /* 무시 */ }
   alert('저장된 데이터를 모두 삭제했습니다.');
@@ -3695,10 +3727,334 @@ function toggleRevenueItemExcluded(code, month, included) {
   if (typeof MONTH_POPUP_OPEN_MONTH === 'number') refreshMonthForecastPopup();
 }
 
+// ─── 실적예상: 최신 인벤토리 수동 업로드 ───────────────────────────────────────
+// 인벤토리 주간변동 탭은 전주·금주 비교 목적이라 특정 주차로 고정되지만, 실적예상은 최신 데이터가 유용하므로
+// 이 탭에서 별도로 최신 인벤토리(매출예상에 쓰이는 4구간만)를 올릴 수 있게 한다. 있으면 이것을 최우선으로 쓰고,
+// 없으면 기존처럼 인벤토리 주간변동 탭의 금주 데이터를 쓴다.
+const LATEST_INV_SECTIONS = [
+  { id: '100', label: '100%' },
+  { id: '90',  label: '90%' },
+  { id: '75',  label: '75%' },
+  { id: '50f', label: '50%(F)' },
+];
+let LATEST_INV = { sections: {}, dateRaw: null, dateMismatch: false, dateValues: [] }; // sections[id] = {rows, fileName, salesList}
+let LATEST_INV_LAST_BULK = null; // {duplicates, unrecognized, unrecognizedFiles, ignoredCount, filteredOut, successCount}
+
+function hasLatestInv() { return Object.keys(LATEST_INV.sections).length > 0; }
+
+function formatMMDDToISO(raw) {
+  if (!raw || raw.length !== 4) return null;
+  return `2026-${raw.slice(0, 2)}-${raw.slice(2, 4)}`;
+}
+
+// 매출예상 계산에 쓸 구간별 인벤토리 데이터의 단일 소스 — 최신 인벤토리가 있으면 그것, 없으면 인벤토리 주간변동
+// 탭의 금주 데이터. getPipelineCandidateRows·mergeAutoForecastFromInventory가 모두 이 함수 하나를 공유한다.
+function getForecastInvSource() {
+  if (hasLatestInv()) return { sections: LATEST_INV.sections, source: 'latest', dateRaw: LATEST_INV.dateRaw };
+  const weeklyDate = getWeekDateInfo('curr').date;
+  return { sections: INV_FILES.curr, source: 'weekly', dateRaw: weeklyDate ? weeklyDate.raw : null };
+}
+
+// LATEST_INV에 올라온 파일들의 파일명 앞 4자리(MMDD)를 다시 계산 — 인식 실패 시 업로드 실행일로 대체, 파일 간 날짜가 다르면 기록.
+function computeLatestInvDateRaw() {
+  const dates = LATEST_INV_SECTIONS
+    .map(s => LATEST_INV.sections[s.id] && LATEST_INV.sections[s.id].fileName)
+    .filter(Boolean)
+    .map(parseFileDateMMDD)
+    .filter(Boolean);
+  if (!dates.length) {
+    const today = new Date();
+    LATEST_INV.dateRaw = String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+    LATEST_INV.dateMismatch = false;
+    LATEST_INV.dateValues = [];
+    return;
+  }
+  const uniqueRaw = [...new Set(dates.map(d => d.raw))];
+  LATEST_INV.dateRaw = dates[0].raw;
+  LATEST_INV.dateMismatch = uniqueRaw.length > 1;
+  LATEST_INV.dateValues = uniqueRaw;
+}
+
+// 실제 파싱 + LATEST_INV 반영 + 슬롯 UI 갱신(개별 슬롯/일괄 업로드 공용) — 인벤토리 주간변동 탭과 동일한 파싱 규칙 재사용.
+function loadLatestInvSectionFile(file, sectionId) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+      console.log(`[최신 인벤토리 파싱] ${sectionId} 시트 목록:`, wb.SheetNames);
+      const rows = parseInventorySheet(wb);
+      const salesList = parseSalesListSheet(wb);
+      LATEST_INV.sections[sectionId] = { rows, fileName: file.name, salesList };
+      computeLatestInvDateRaw();
+      applyLatestInvSlotUI(sectionId, file.name, rows.length);
+      mergeAutoForecastFromInventory(); // 내부에서 renderSalesTrend()까지 호출
+      syncUnmatched100Seen();
+      resolve(rows);
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function applyLatestInvSlotUI(sectionId, fileName, rowCount) {
+  const nameEl = document.getElementById(`latest-inv-slot-name-${sectionId}`);
+  const rowsEl = document.getElementById(`latest-inv-slot-rows-${sectionId}`);
+  const slotEl = document.getElementById(`latest-inv-slot-${sectionId}`);
+  if (nameEl) nameEl.textContent = fileName;
+  if (rowsEl) rowsEl.textContent = rowCount ? `${rowCount}행` : '⚠ 인식 실패';
+  if (slotEl) slotEl.classList.add('has-file');
+}
+
+function processLatestInvFile(file, sectionId) {
+  if (!file.name.match(/\.(xlsx|xls)$/i)) { alert('.xlsx 또는 .xls 파일만 업로드할 수 있습니다.'); return; }
+  loadLatestInvSectionFile(file, sectionId).then(() => { saveLatestInv(); });
+}
+
+function setupLatestInvSlot(card, sectionId) {
+  const input = card.querySelector('input[type=file]');
+  card.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) processLatestInvFile(file, sectionId);
+    e.target.value = '';
+  });
+  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', e => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); });
+  card.addEventListener('drop', e => {
+    e.preventDefault();
+    card.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processLatestInvFile(file, sectionId);
+  });
+}
+
+function buildLatestInvSlots() {
+  const list = document.getElementById('latest-inv-slots');
+  if (!list) return;
+  LATEST_INV_SECTIONS.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'inv-slot';
+    div.id = `latest-inv-slot-${s.id}`;
+    div.innerHTML = `
+      <input type="file" accept=".xlsx,.xls" id="latest-inv-input-${s.id}" style="display:none">
+      <span class="inv-slot-icon">📁</span>
+      <span class="inv-slot-label">${s.label}</span>
+      <span class="inv-slot-name" id="latest-inv-slot-name-${s.id}">파일 선택 안 됨</span>
+      <span class="inv-slot-rows" id="latest-inv-slot-rows-${s.id}"></span>`;
+    setupLatestInvSlot(div, s.id);
+    list.appendChild(div);
+  });
+}
+
+function setupLatestInvBulkZone() {
+  const zone = document.getElementById('latest-inv-bulk-zone');
+  const input = document.getElementById('latest-inv-bulk-input');
+  if (!zone || !input) return;
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    if (e.target.files.length) handleLatestInvBulkFiles(e.target.files);
+    e.target.value = '';
+  });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleLatestInvBulkFiles(e.dataTransfer.files);
+  });
+}
+
+// 파일명 구간 인식은 인벤토리 주간변동 탭과 동일한 detectSectionFromFilename을 그대로 재사용하되,
+// 매출예상에 쓰이지 않는 50%(U)/25%/0%로 인식된 파일은 별도로 모아 무시 안내만 표시한다.
+async function handleLatestInvBulkFiles(fileList) {
+  const allFiles = Array.from(fileList);
+  const files = allFiles.filter(f => /\.(xlsx|xls)$/i.test(f.name));
+  const ignoredCount = allFiles.length - files.length;
+
+  const bySection = {};
+  const unrecognizedFiles = [];
+  const filteredOut = [];
+  files.forEach(f => {
+    const rawId = detectSectionFromFilename(f.name);
+    if (rawId && !LATEST_INV_SECTIONS.some(s => s.id === rawId)) { filteredOut.push({ name: f.name, sectionId: rawId }); return; }
+    if (!rawId) { unrecognizedFiles.push(f); return; }
+    (bySection[rawId] = bySection[rawId] || []).push(f);
+  });
+
+  const duplicates = [];
+  let successCount = 0;
+  for (const [sectionId, list] of Object.entries(bySection)) {
+    if (list.length > 1) duplicates.push({ sectionId, files: list.map(f => f.name) });
+    await loadLatestInvSectionFile(list[0], sectionId); // 나중 파일로 덮어쓰지 않고 첫 파일만 반영
+    successCount++;
+  }
+
+  LATEST_INV_LAST_BULK = { duplicates, unrecognized: unrecognizedFiles.map(f => f.name), unrecognizedFiles, ignoredCount, filteredOut, successCount };
+  console.log('[최신 인벤토리 일괄 업로드]', { 성공: successCount, 중복: duplicates, 미인식: unrecognizedFiles.map(f => f.name), 대상외구간_무시: filteredOut });
+
+  renderSalesTrend();
+  saveLatestInv();
+}
+
+function assignUnrecognizedLatestInvFile(index, sectionId) {
+  if (!sectionId || !LATEST_INV_SECTIONS.some(s => s.id === sectionId)) return;
+  const last = LATEST_INV_LAST_BULK;
+  if (!last) return;
+  const file = last.unrecognizedFiles[index];
+  if (!file) return;
+  loadLatestInvSectionFile(file, sectionId).then(() => {
+    last.unrecognized.splice(index, 1);
+    last.unrecognizedFiles.splice(index, 1);
+    renderSalesTrend();
+    saveLatestInv();
+  });
+}
+
+function renderLatestInvBulkMsg() {
+  const el = document.getElementById('latest-inv-bulk-msg');
+  if (!el) return;
+  const parts = [];
+
+  if (LATEST_INV.dateMismatch) {
+    parts.push(`<div class="inv-bulk-warn">업로드한 파일의 날짜가 일치하지 않습니다: ${LATEST_INV.dateValues.join(', ')}</div>`);
+  }
+
+  const last = LATEST_INV_LAST_BULK;
+  if (last) {
+    if (last.ignoredCount > 0) parts.push(`<div class="inv-bulk-ignore">⚠ xlsx/xls가 아닌 파일 ${last.ignoredCount}개는 무시되었습니다.</div>`);
+    if (last.filteredOut.length) {
+      const labels = last.filteredOut.map(f => INV_SECTION_LABEL[f.sectionId]).join(', ');
+      parts.push(`<div class="inv-bulk-ignore">⚠ 매출예상 대상이 아닌 구간(${labels}) 파일은 무시되었습니다: ${last.filteredOut.map(f => escHtml(f.name)).join(', ')}</div>`);
+    }
+    last.duplicates.forEach(d => {
+      parts.push(`<div class="inv-bulk-dup">중복 배정: ${INV_SECTION_LABEL[d.sectionId]} 구간에 ${d.files.map(escHtml).join(', ')} — 나중 파일은 무시됨</div>`);
+    });
+    last.unrecognized.forEach((fname, i) => {
+      parts.push(`
+        <div class="inv-bulk-unrec">
+          <span>구간을 인식하지 못했습니다: ${escHtml(fname)}</span>
+          <select onchange="assignUnrecognizedLatestInvFile(${i}, this.value)">
+            <option value="">구간 선택…</option>
+            ${LATEST_INV_SECTIONS.map(s => `<option value="${s.id}">${s.label}</option>`).join('')}
+          </select>
+        </div>`);
+    });
+    if (last.successCount === LATEST_INV_SECTIONS.length && last.duplicates.length === 0 && last.unrecognized.length === 0) {
+      parts.push(`<div class="inv-bulk-ok">✓ 4개 구간 모두 배정 완료</div>`);
+    }
+  }
+  el.innerHTML = parts.join('');
+}
+
+function toggleLatestInvSection() {
+  const body = document.getElementById('latest-inv-body');
+  const icon = document.getElementById('latest-inv-toggle-icon');
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  icon.textContent = collapsed ? '▾' : '▸';
+}
+
+function clearLatestInvState() {
+  LATEST_INV = { sections: {}, dateRaw: null, dateMismatch: false, dateValues: [] };
+  LATEST_INV_LAST_BULK = null;
+  LATEST_INV_SECTIONS.forEach(s => {
+    const nameEl = document.getElementById(`latest-inv-slot-name-${s.id}`);
+    const rowsEl = document.getElementById(`latest-inv-slot-rows-${s.id}`);
+    const slotEl = document.getElementById(`latest-inv-slot-${s.id}`);
+    if (nameEl) nameEl.textContent = '파일 선택 안 됨';
+    if (rowsEl) rowsEl.textContent = '';
+    if (slotEl) slotEl.classList.remove('has-file');
+  });
+}
+
+// [삭제]: 확인 후 완전히 제거하고 주간변동 탭 데이터로 복귀. [초기화]: 확인 없이 업로드 슬롯만 비움(같은 결과, 마찰만 다름).
+function removeLatestInv() {
+  if (!confirm('최신 인벤토리를 삭제하고 주간변동 분석 데이터를 사용합니다. 계속할까요?')) return;
+  clearLatestInvState();
+  mergeAutoForecastFromInventory();
+  saveLatestInv();
+}
+
+function resetLatestInvSlots() {
+  clearLatestInvState();
+  mergeAutoForecastFromInventory();
+  saveLatestInv();
+}
+
+const LATEST_INV_STORAGE_KEY = 'latest_inventory';
+
+async function saveLatestInv() {
+  if (!window.idbKeyval) return;
+  try {
+    await idbKeyval.set(LATEST_INV_STORAGE_KEY, roundNumbersDeep({
+      sections: LATEST_INV.sections, dateRaw: LATEST_INV.dateRaw, dateMismatch: LATEST_INV.dateMismatch, dateValues: LATEST_INV.dateValues,
+    }));
+  } catch (e) { /* IndexedDB 사용 불가 — 저장만 건너뜀 */ }
+}
+
+async function restoreLatestInv() {
+  if (!window.idbKeyval) return;
+  try {
+    const saved = await idbKeyval.get(LATEST_INV_STORAGE_KEY);
+    if (!saved || !saved.sections) return;
+    LATEST_INV = { sections: saved.sections, dateRaw: saved.dateRaw || null, dateMismatch: !!saved.dateMismatch, dateValues: saved.dateValues || [] };
+    Object.entries(LATEST_INV.sections).forEach(([id, sec]) => {
+      if (sec && sec.fileName) applyLatestInvSlotUI(id, sec.fileName, (sec.rows || []).length);
+    });
+  } catch (e) { /* 저장 데이터가 깨졌으면 빈 상태로 시작 */ }
+}
+
+function renderLatestInvHeaderStatus() {
+  const el = document.getElementById('latest-inv-status-badge');
+  if (!el) return;
+  if (hasLatestInv()) {
+    const count = Object.keys(LATEST_INV.sections).length;
+    const totalMillion = Object.values(LATEST_INV.sections).reduce((s, sec) => s + (sec.rows || []).reduce((s2, r) => s2 + (r['총합계'] || 0), 0), 0);
+    const dateDisplay = formatMMDDToISO(LATEST_INV.dateRaw) || '(날짜 미인식)';
+    el.textContent = `✓ ${dateDisplay} 기준 · ${count}개 구간 · ${millionToEok(totalMillion).toFixed(1)}억`;
+    el.className = 'rev2-h1-status-badge latest-inv-status-ok';
+  } else {
+    el.textContent = '미등록 — 주간변동 분석 데이터를 사용 중';
+    el.className = 'rev2-h1-status-badge latest-inv-status-none';
+  }
+}
+
+// 실적예상 탭 상단(요약 카드 위)에 "매출예상 기준" 표시 — 두 탭의 기준일이 다를 수 있으므로 항상 명시한다.
+function renderForecastInvSourceLine() {
+  const el = document.getElementById('rev2-inv-source-line');
+  if (!el) return;
+  const src = getForecastInvSource();
+  if (!src.sections || Object.keys(src.sections).length === 0) { el.innerHTML = ''; el.className = 'rev2-inv-source-line'; return; }
+  const dateDisplay = src.dateRaw ? formatMMDDToISO(src.dateRaw) : '(날짜 미인식)';
+  const sourceLabel = src.source === 'latest' ? '수동 업로드' : '주간변동 분석 데이터';
+  let html = `매출예상 기준: ${dateDisplay} (${sourceLabel})`;
+  let warn = false;
+  if (src.source === 'latest') {
+    const weeklyDate = getWeekDateInfo('curr').date;
+    if (weeklyDate && src.dateRaw && weeklyDate.raw !== src.dateRaw) {
+      warn = true;
+      html += `<br>※ 인벤토리 주간변동 분석(${weeklyDate.raw})과 기준일이 다릅니다`;
+    }
+  }
+  el.innerHTML = html;
+  el.className = warn ? 'rev2-inv-source-line warn' : 'rev2-inv-source-line';
+}
+
 // 파이프라인 후보 사업 목록(100% 잔여분 + 90/75/50%(F) 전액)을 구성.
 // 매출 예상 입력 표와 차트/요약카드가 모두 이 목록을 공유한다.
 function getPipelineCandidateRows(scope) {
-  if (!INV_RESULT) return null; // 인벤토리 비교 탭에서 분석이 아직 실행되지 않음
+  const invSrc = getForecastInvSource();
+  if (!INV_RESULT && !hasLatestInv()) return null; // 둘 중 하나도 없으면 계산 불가
+  console.log('[매출예상 인벤토리 소스]', {
+    소스: invSrc.source === 'latest' ? '최신 인벤토리(수동 업로드)' : '인벤토리 주간변동 탭(금주)',
+    기준일: invSrc.dateRaw ? formatMMDDToISO(invSrc.dateRaw) : '(미인식)',
+    구간별_건수_금액: LATEST_INV_SECTIONS.map(s => {
+      const sec = invSrc.sections[s.id];
+      const rows = sec ? (sec.rows || []) : [];
+      const million = rows.reduce((a, r) => a + (r['총합계'] || 0), 0);
+      return { 구간: s.label, 건수: rows.length, 금액_백만: Math.round(million * 10) / 10 };
+    }),
+  });
   const unassignedRows = []; // 소속 미분류 상세 목록 — INCLUDE_UNASSIGNED 상태와 무관하게 전체 수집(상세보기용)
 
   // 1팀 스코프 여부 판정. 미분류 건은 unassignedRows에 기록하고, INCLUDE_UNASSIGNED가 true일 때만 포함.
@@ -3725,7 +4081,7 @@ function getPipelineCandidateRows(scope) {
   const unmatched = [];
   const remainder100Detail = []; // 100% 구간 전 건의 잔여분 계산 과정(스코프 무관) — 엑셀 다운로드 시트5용
 
-  const rows100 = (INV_FILES.curr['100'] && INV_FILES.curr['100'].rows) || [];
+  const rows100 = (invSrc.sections['100'] && invSrc.sections['100'].rows) || [];
   rows100.forEach(r => {
     const code  = String(r['프로젝트코드'] || '').trim();
     const order = r['총합계'] || 0; // 백만원
@@ -3759,7 +4115,7 @@ function getPipelineCandidateRows(scope) {
   });
 
   ['90', '75', '50f'].forEach(id => {
-    const list = (INV_FILES.curr[id] && INV_FILES.curr[id].rows) || [];
+    const list = (invSrc.sections[id] && invSrc.sections[id].rows) || [];
     list.forEach(r => {
       const amountMillion = r['총합계'] || 0;
       if (!decideScope(r, amountMillion, id)) return;
@@ -3917,11 +4273,11 @@ function mergeForecastForCode(code, freshEntries) {
   else delete REVENUE_FORECAST[code];
 }
 
-// 금주(curr) 인벤토리 파일들에 함께 실린 "매출 목록" 시트를 모두 모아 REVENUE_FORECAST에 자동 반영한다.
+// 매출예상 인벤토리 소스(최신 인벤토리 우선, 없으면 금주 인벤토리)에 함께 실린 "매출 목록" 시트를 모두 모아 REVENUE_FORECAST에 자동 반영한다.
 function mergeAutoForecastFromInventory() {
   const byCode = {};
   let totalRows = 0;
-  Object.values(INV_FILES.curr).forEach(entry => {
+  Object.values(getForecastInvSource().sections).forEach(entry => {
     (entry && entry.salesList || []).forEach(row => {
       const d = parseExcelDateFull(row.billDate);
       const month = d ? `${d.year}-${String(d.month).padStart(2, '0')}` : '';
@@ -5121,6 +5477,9 @@ function renderSalesTrend() {
   renderOstaekControl();
   renderProbFilterUI(forecastData);
   renderH1RevenueUI();
+  renderLatestInvHeaderStatus();
+  renderForecastInvSourceLine();
+  renderLatestInvBulkMsg();
   renderValidationLine(forecastData);
 
   if (!SALES_PARSED) {
