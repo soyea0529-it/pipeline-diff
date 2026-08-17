@@ -3571,16 +3571,47 @@ function findModeMonthFromRows(rows) {
   return best;
 }
 
-// 시트: 'Sheet1'(없으면 첫 시트). 헤더행: row2(0-based index 1), 데이터: row3부터.
-// 컬럼은 헤더 텍스트로 동적 탐지(인덱스 고정 금지). 상태 컬럼(결재완료/발행예정 등)은 읽지도 필터링에도 쓰지 않는다 —
-// 매출실적일자에 잡힌 전액을 그대로 발행 실적으로 집계한다.
+// 앞쪽 10개 행을 순회하며 헤더행을 동적으로 찾는다(행 번호를 상수로 고정하지 않음 — 파일마다 제목행/빈행
+// 유무가 달라 헤더 위치가 흔들린다). 셀 중 "프로젝트코드"/"매출실적영업대표"를 포함하거나 첫 셀이 정확히
+// "NO"인 행을 헤더로 확정한다.
+function findSalesMgmtHeaderIdx(raw, fileName) {
+  const scanLimit = Math.min(10, raw.length);
+  for (let i = 0; i < Math.min(5, raw.length); i++) {
+    console.log(`[매출관리 목록 파싱] ${fileName} 행[${i}]:`, (raw[i] || []).join(' | '));
+  }
+  for (let i = 0; i < scanLimit; i++) {
+    const row = raw[i] || [];
+    const normCells = row.map(v => normalizeHeaderText(v));
+    const hasProjectCode = normCells.some(v => v.includes('프로젝트코드'));
+    const hasRep = normCells.some(v => v.includes('매출실적영업대표'));
+    const firstCellIsNO = normCells[0] === 'NO';
+    if (hasProjectCode || hasRep || firstCellIsNO) {
+      const reason = hasProjectCode ? "셀에 '프로젝트코드' 포함" : hasRep ? "셀에 '매출실적영업대표' 포함" : "첫 셀이 'NO'와 일치";
+      console.log(`[매출관리 목록 파싱] ${fileName} 헤더행 확정: 인덱스 ${i} (사유: ${reason})`);
+      return i;
+    }
+  }
+  return -1;
+}
+
+// 시트: 'Sheet1'(없으면 첫 시트). 헤더행은 앞쪽 10개 행을 스캔해 동적으로 탐지(고정 인덱스 금지),
+// 데이터는 헤더행 바로 다음 행부터. 컬럼도 전부 헤더 텍스트로 동적 탐지. 상태 컬럼(결재완료/발행예정 등)은
+// 읽지도 필터링에도 쓰지 않는다 — 매출실적일자에 잡힌 전액을 그대로 발행 실적으로 집계한다.
 function parseSalesMgmtSheet(wb, fileName) {
   console.log('[매출관리 목록 파싱]', fileName, '시트 목록:', wb.SheetNames);
   const sheetName = wb.SheetNames.includes('Sheet1') ? 'Sheet1' : wb.SheetNames[0];
   const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
-  if (!raw || raw.length < 3) { console.warn('[매출관리 목록 파싱]', fileName, '데이터가 없습니다.'); return []; }
+  if (!raw || raw.length < 2) { console.warn('[매출관리 목록 파싱]', fileName, '데이터가 없습니다.'); return []; }
 
-  const headerRow = raw[1] || []; // 1-based row2 = 0-based index 1
+  const headerIdx = findSalesMgmtHeaderIdx(raw, fileName);
+  if (headerIdx < 0) {
+    console.warn(`[매출관리 목록 파싱] ${fileName} 헤더행을 찾지 못했습니다. 앞쪽 10개 행에 '프로젝트 코드' 컬럼이 없습니다`);
+    return [];
+  }
+  const dataStartIdx = headerIdx + 1;
+  console.log(`[매출관리 목록 파싱] ${fileName} 데이터 시작 인덱스:`, dataStartIdx);
+
+  const headerRow = raw[headerIdx] || [];
   // 실제 파일은 "프로젝트 코드"처럼 헤더 중간에 공백이 섞여 있어(공용 findHeaderCol/findHeaderColExact가
   // 정규화 후 비교) 부분일치는 findHeaderCol, 제품/상품/용역/합계처럼 짧은 단어는 오매칭 방지를 위해
   // findHeaderColExact(완전일치)를 사용한다.
@@ -3599,7 +3630,7 @@ function parseSalesMgmtSheet(wb, fileName) {
 
   const rows = [];
   let dateFailCount = 0;
-  for (let r = 2; r < raw.length; r++) {
+  for (let r = dataStartIdx; r < raw.length; r++) {
     const rr = raw[r] || [];
     const code = String(rr[cols.code] ?? '').trim();
     if (!/^OP-/i.test(code)) continue; // 유효 행만(프로젝트코드가 'OP-'로 시작)
