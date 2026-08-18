@@ -764,34 +764,6 @@
       </div>
       <div class="rev2-fallback-notice" id="rev2-h1-fallback-notice" style="display:none">상반기 확정 실적 파일을 업로드해주세요.<br>현재는 담당자명 기준으로 집계됩니다.</div>
 
-      <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
-        <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
-        <div class="upload-icon">📊</div>
-        <div class="upload-label">주간 영업회의자료 업로드</div>
-        <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
-        <div class="upload-filename" id="rev2-upload-name"></div>
-      </div>
-      <div class="btn-row" style="margin-bottom:16px">
-        <button class="btn btn-secondary" onclick="resetSalesTrend()">초기화</button>
-        <span class="status-msg" id="rev2-status"></span>
-      </div>
-
-      <div class="chart-card" id="salesmgmt-card" style="margin-bottom:16px">
-        <div class="chart-card-title" style="margin-bottom:2px;display:flex;align-items:center;gap:10px">
-          매출관리 목록 (월별 실적)
-          <button type="button" class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="reanalyzeSalesTrend()">다시 분석</button>
-        </div>
-        <div class="rev2-salesmgmt-sub">전월 확정 및 당월 발행 예상 실적. 여러 파일 동시 업로드 가능</div>
-        <div class="inv-bulk-zone" id="salesmgmt-zone">
-          <input type="file" accept=".xlsx,.xls" multiple id="salesmgmt-input" style="display:none">
-          <div class="inv-bulk-icon">🧾</div>
-          <div class="inv-bulk-label">매출관리 목록 파일 올리기</div>
-          <div class="inv-bulk-hint">드래그하거나 클릭하여 여러 파일 선택 (같은 월은 다시 올리면 덮어씁니다)</div>
-        </div>
-        <div class="rev2-salesmgmt-badges" id="salesmgmt-badges"></div>
-        <div class="rev2-schema-notice" id="rev2-schema-outdated-notice" style="display:none">분석 로직이 변경되었습니다. 파일을 다시 업로드해주세요</div>
-      </div>
-
       <div id="rev2-warning"></div>
 
       <div class="empty-state" id="rev2-empty">
@@ -864,6 +836,48 @@
         </div>
 
         <div class="rev2-validation-line" id="rev2-validation-line"></div>
+      </div>
+
+      <div class="chart-card" id="rev2-weekly-card">
+        <div class="rev2-forecast-header" onclick="toggleWeeklySection()">
+          <span class="chart-card-title" style="margin-bottom:0">주간 영업회의자료 <span class="rev2-h1-status-badge" id="rev2-weekly-status-badge"></span></span>
+          <span class="rev2-forecast-toggle-icon" id="rev2-weekly-toggle-icon">▸</span>
+        </div>
+        <div id="rev2-weekly-body" style="display:none">
+          <div class="rev2-salesmgmt-sub">상반기 확정 실적 및 100% 사업 기청구액 산출에 사용</div>
+          <div class="upload-card" id="rev2-upload-card" style="max-width:560px">
+            <input type="file" accept=".xlsx,.xls" id="rev2-upload-input" style="display:none">
+            <div class="upload-icon">📊</div>
+            <div class="upload-label">주간 영업회의자료</div>
+            <div class="upload-hint">파일을 드래그하거나 클릭하여 선택</div>
+            <div class="upload-filename" id="rev2-upload-name"></div>
+          </div>
+          <div class="btn-row" style="margin-top:8px;margin-bottom:0">
+            <button class="btn btn-secondary" onclick="resetSalesTrend()">초기화</button>
+            <span class="status-msg" id="rev2-status"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-card" id="salesmgmt-card">
+        <div class="rev2-forecast-header" onclick="toggleSalesMgmtSection()">
+          <span class="chart-card-title" style="margin-bottom:0">전월 확정 매출실적 <span class="rev2-h1-status-badge" id="salesmgmt-status-badge"></span></span>
+          <span class="rev2-forecast-toggle-icon" id="salesmgmt-toggle-icon">▸</span>
+        </div>
+        <div id="salesmgmt-body" style="display:none">
+          <div class="rev2-salesmgmt-sub" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span>전월까지 확정된 세금계산서 발행 실적. 여러 월 동시 업로드 가능</span>
+            <button type="button" class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="reanalyzeSalesTrend()">다시 분석</button>
+          </div>
+          <div class="inv-bulk-zone" id="salesmgmt-zone">
+            <input type="file" accept=".xlsx,.xls" multiple id="salesmgmt-input" style="display:none">
+            <div class="inv-bulk-icon">🧾</div>
+            <div class="inv-bulk-label">매출관리 목록 파일 올리기</div>
+            <div class="inv-bulk-hint">드래그하거나 클릭하여 여러 파일 선택 (같은 월은 다시 올리면 덮어씁니다)</div>
+          </div>
+          <div class="rev2-salesmgmt-badges" id="salesmgmt-badges"></div>
+          <div class="rev2-schema-notice" id="rev2-schema-outdated-notice" style="display:none">분석 로직이 변경되었습니다. 파일을 다시 업로드해주세요</div>
+        </div>
       </div>
 
       <div class="chart-card" id="rev2-forecast-card">
@@ -952,10 +966,11 @@
 
       <div class="chart-card" id="latest-inv-card">
         <div class="rev2-forecast-header" onclick="toggleLatestInvSection()">
-          <span class="chart-card-title" style="margin-bottom:0">최신 인벤토리 수동 업로드 (선택) <span class="rev2-h1-status-badge" id="latest-inv-status-badge"></span></span>
+          <span class="chart-card-title" style="margin-bottom:0">매출예상 인벤토리 (수동 업로드) <span class="rev2-h1-status-badge" id="latest-inv-status-badge"></span></span>
           <span class="rev2-forecast-toggle-icon" id="latest-inv-toggle-icon">▸</span>
         </div>
         <div id="latest-inv-body" style="display:none">
+          <div class="rev2-salesmgmt-sub">8월 이후 매출예상 산출용. 미업로드 시 주간변동 분석 데이터 사용</div>
           <div class="inv-bulk-zone" id="latest-inv-bulk-zone">
             <input type="file" accept=".xlsx,.xls" multiple id="latest-inv-bulk-input" style="display:none">
             <div class="inv-bulk-icon">📦</div>
@@ -1807,6 +1822,8 @@ async function clearAllStoredData() {
   resetSalesTrend();
   SALES_MGMT_FILES = {};
   renderSalesMgmtBadges();
+  renderSalesMgmtStatus();
+  renderWeeklyUploadStatus();
   const schemaNotice = document.getElementById('rev2-schema-outdated-notice');
   if (schemaNotice) schemaNotice.style.display = 'none';
   REVENUE_FORECAST = {};
@@ -5798,6 +5815,8 @@ function renderSalesTrend() {
   renderProbFilterUI(forecastData);
   renderH1RevenueUI();
   renderSalesMgmtBadges();
+  renderSalesMgmtStatus();
+  renderWeeklyUploadStatus();
   renderLatestInvHeaderStatus();
   renderForecastInvSourceLine();
   renderLatestInvBulkMsg();
@@ -6136,6 +6155,55 @@ function toggleH1Section() {
   const collapsed = body.style.display === 'none';
   body.style.display = collapsed ? '' : 'none';
   icon.textContent = collapsed ? '▾' : '▸';
+}
+
+// ─── 매출 추이: 하단 업로드 섹션(주간 영업회의자료 / 전월 확정 매출실적) 접기/펼치기 + 상태 배지 ───
+
+function toggleWeeklySection() {
+  const body = document.getElementById('rev2-weekly-body');
+  const icon = document.getElementById('rev2-weekly-toggle-icon');
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  icon.textContent = collapsed ? '▾' : '▸';
+}
+
+function renderWeeklyUploadStatus() {
+  const el = document.getElementById('rev2-weekly-status-badge');
+  if (!el) return;
+  const fileName = (document.getElementById('rev2-upload-name').textContent || '').trim();
+  if (SALES_PARSED && fileName) {
+    el.textContent = `✓ ${fileName.replace(/\.(xlsx|xls)$/i, '')}`;
+    el.style.color = 'var(--up)';
+  } else {
+    el.textContent = '미등록 — 상반기 실적과 100% 잔여분 계산에 필요합니다';
+    el.style.color = 'var(--del)';
+  }
+}
+
+function toggleSalesMgmtSection() {
+  const body = document.getElementById('salesmgmt-body');
+  const icon = document.getElementById('salesmgmt-toggle-icon');
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  icon.textContent = collapsed ? '▾' : '▸';
+}
+
+function renderSalesMgmtStatus() {
+  const el = document.getElementById('salesmgmt-status-badge');
+  if (!el) return;
+  const keys = Object.keys(SALES_MGMT_FILES).sort();
+  if (!keys.length) {
+    el.textContent = '미등록 — 해당 월은 인벤토리 매출예상을 사용합니다';
+    el.style.color = 'var(--text-sub)';
+    return;
+  }
+  const parts = keys.map(k => {
+    const m = parseInt(k.split('-')[1], 10);
+    const total = SALES_MGMT_FILES[k].rows.reduce((s, r) => s + r.amountWon, 0);
+    return `${m}월 (${wonToEok(total).toFixed(1)}억)`;
+  });
+  el.textContent = `✓ ${parts.join(', ')}`;
+  el.style.color = 'var(--up)';
 }
 
 function renderH1RevenueUI() {
