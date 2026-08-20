@@ -1277,6 +1277,32 @@
 
 ---
 
+### 2026-08-20 — 데이터 표 변동내역 컬럼 확대 및 상단 스크롤바 추가 (42차 작업)
+
+#### 목표
+인벤토리 주간변동 분석 탭의 데이터 표에서 "변동내역" 컬럼이 폭 제한이 전혀 없어 긴 텍스트가 세로로
+10줄 이상 늘어나는 문제, 그리고 표가 넓어 가로 스크롤이 필요할 때 화면 위쪽에서는 스크롤 가능 여부를
+알 수 없는 문제를 개선.
+
+#### 구현 내용
+- **변동내역 컬럼**(`.inv-change-cell`/`.inv-change-text`): "비고"(원본 셀 메모) 컬럼과는 다른, 시스템이 자동 생성하는 변동 요약 컬럼 — 기존엔 폭 제한·줄바꿈 제한이 전혀 없어 문제의 원인이었음. `min-width:220px / max-width:320px`, `-webkit-line-clamp:4`로 4줄 초과분은 말줄임. `title` 속성으로 호버 시 전체 텍스트 툴팁. 클릭 시 `toggleInvChangeExpand()`가 해당 `<tr>` 바로 다음에 `colspan` 전체 폭의 펼침 행(`.inv-change-expand-row`)을 삽입/제거하는 토글 — 기존 "비고" 컬럼의 셀 자체 확장 방식과 달리 요청대로 "행 아래에 펼쳐 보여주는" 별도 행 방식으로 구현.
+- **폭 확보용 컬럼 축소**: 고객사명(`.inv-cust-cell`, `max-width:130px` + 2줄 clamp), 프로젝트코드(`.inv-nowrap-cell` 추가, 줄바꿈 없이 한 줄), 수주확도(`.inv-nowrap-cell`, 한 줄), 수주상태(`.inv-state-cell`, `max-width:90px` + 한 줄 말줄임). 각 텍스트 컬럼에 clamp/nowrap을 걸어두면 표의 어느 행도 가장 긴 컬럼(변동내역, 4줄)보다 커질 수 없어 "행 최대 높이 4줄 제한" 요구사항이 별도의 `tr` 높이 규칙 없이 자연히 충족됨(테이블 행 높이는 항상 가장 큰 셀에 맞춰지므로).
+- **상단 보조 스크롤바**: 요청된 구현 방식 그대로 — `.table-wrap`(기존 가로 스크롤 컨테이너) 위에 `.inv-table-top-scroll`(빈 `overflow-x:auto` div, 높이 14px)을 두고, 그 안에 실제 표와 동일한 `scrollWidth`를 가진 더미 요소(`.inv-table-top-scroll-inner`)를 배치. 양쪽에 `onscroll` 핸들러(`invTableSyncFromTop`/`invTableSyncFromWrap`)를 걸어 `scrollLeft`를 상호 반영 — 재귀 호출 방지용 플래그(`INV_TABLE_SCROLL_SYNCING`)로 무한 루프 차단.
+- **표시/숨김 로직**(`setupInvTableScrollSync(sectionId)`): `table.scrollWidth > wrap.clientWidth`일 때만 상단 스크롤바에 `.visible` 클래스 부여, 표가 화면 폭 안에 들어오면 자동으로 숨김. 구간(사이드탭)마다 독립적으로 ID를 부여(`inv-table-wrap-${sectionId}` 등)해 7개 구간 표가 각자 자기 크기를 기준으로 판단.
+- **우측 잘림 힌트**(`.inv-table-scroll-fade`): `.table-wrap`을 감싸는 `.inv-table-scroll-outer`(`position:relative`) 안에 절대 위치로 배치한 그라데이션 오버레이 — "더 스크롤할 내용이 남아있을 때만"(`scrollLeft + clientWidth < scrollWidth`) 표시되고, 끝까지 스크롤하면 자동으로 사라짐(`updateInvTableFade`가 두 스크롤바의 scroll 이벤트마다 재계산).
+- **측정 시점 처리**: `display:none` 상태인 비활성 탭/구간은 폭을 정확히 잴 수 없으므로, 초기 렌더링 시 활성 구간만 측정(`renderInvAnalysis()`)하고 구간 전환(`switchInvSectionTab`)·인벤토리 탭 재진입(`switchTab`, `INV_RESULT` 존재 시)·창 크기 변경(`resize`, 150ms 디바운스) 시점마다 현재 활성 구간을 다시 측정하도록 훅을 추가.
+- **헤더 행 고정**: 요청대로 기존 동작을 그대로 유지 — 확인 결과 이 표는 애초에 별도의 세로 스크롤 컨테이너가 아니라 페이지 전체가 스크롤되는 구조라 sticky 헤더 자체가 존재하지 않았음(변경 대상 없음, 새로 추가하지 않음).
+
+#### 검증
+- 새 CSS 클래스가 실제로 적용되는지 `getComputedStyle`로 직접 확인: `.inv-change-cell`의 `min-width:220px`/`max-width:320px`/`-webkit-line-clamp:4`, `.inv-cust-cell`의 2줄 clamp, `.code`(프로젝트코드)와 수주확도 셀의 `white-space:nowrap`, `.inv-state-cell`의 `max-width:90px`.
+- 변동내역 셀 클릭 → 바로 다음 `<tr>`로 `.inv-change-expand-row`가 삽입되고 전체 텍스트가 그대로 표시되는지, 다시 클릭 → 그 행이 제거되고 `expanded` 클래스도 해제되는지 확인(토글 양방향 모두 확인).
+- 실제 표(14개 컬럼)가 뷰포트보다 넓은 상태(`scrollWidth 1362 > clientWidth 1183`)에서 상단 스크롤바가 자동으로 `visible`, 더미 요소 폭이 `scrollWidth`와 정확히 일치하는지 확인. 상단 스크롤바를 스크롤하면 하단 `.table-wrap`도 같은 위치로 따라가는지, 반대로 하단을 끝까지 스크롤하면 상단도 따라가고 우측 그라데이션 힌트가 사라지는지 양방향 모두 확인.
+- `.table-wrap`의 폭을 임시로 3000px로 넓혀 "스크롤이 필요 없는 경우"를 재현 → 상단 스크롤바와 그라데이션 힌트가 모두 자동으로 숨겨지는지 확인, 원래 폭으로 되돌리면 다시 나타나는지 확인.
+- 다른 구간 탭으로 전환했다가 다시 돌아왔을 때, 그리고 다른 최상단 탭(26Y 실적예상 분석)으로 이동했다가 인벤토리 탭으로 복귀했을 때 모두 스크롤바 표시 상태가 정확히 재계산되는지 확인(`display:none` 상태에서의 잘못된 측정값이 남지 않음을 확인).
+- 전 과정에서 콘솔 에러 없음. `node -e "new Function(...)"` 구문 검사 통과.
+
+---
+
 ## 환경 정보
 - OS: Windows 10
 - Node.js: v24.16.0

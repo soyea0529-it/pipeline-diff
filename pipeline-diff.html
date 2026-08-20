@@ -152,6 +152,34 @@
   .inv-remark-cell.expanded .inv-remark-text { -webkit-line-clamp: unset; overflow: visible; }
   .inv-remark-cell:hover { color: var(--text); }
 
+  /* 변동내역 컬럼(시스템이 생성한 변동 요약, "비고"와는 다른 컬럼) — 폭 확대 + 4줄 clamp + 클릭 시 행 아래에 전체 펼침 */
+  .inv-change-cell { min-width: 220px; max-width: 320px; cursor: pointer; font-size: 11.5px; color: var(--text-sub); }
+  .inv-change-text {
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+    overflow: hidden; line-height: 1.4;
+  }
+  .inv-change-cell:hover, .inv-change-cell.expanded { color: var(--text); }
+  .inv-change-expand-row td {
+    background: var(--surface2); padding: 10px 14px; font-size: 12.5px; color: var(--text);
+    white-space: pre-wrap; line-height: 1.6;
+  }
+  /* 폭 확보용 — 고객사명 2줄 clamp, 프로젝트코드/수주확도 한 줄, 수주상태 한 줄+말줄임 */
+  .inv-cust-cell { max-width: 130px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+  .inv-nowrap-cell { white-space: nowrap; }
+  .inv-state-cell { max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 표 상단 보조 가로 스크롤바(하단 스크롤바와 연동) + 우측 잘림 안내 그라데이션 */
+  .inv-table-scroll-outer { position: relative; }
+  .inv-table-top-scroll { overflow-x: auto; overflow-y: hidden; height: 14px; margin-bottom: 4px; display: none; }
+  .inv-table-top-scroll.visible { display: block; }
+  .inv-table-top-scroll-inner { height: 1px; }
+  .inv-table-scroll-fade {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 32px;
+    background: linear-gradient(to right, transparent, #1a1d2a 85%);
+    pointer-events: none; opacity: 0; transition: opacity .15s; border-radius: 0 10px 10px 0;
+  }
+  .inv-table-scroll-fade.visible { opacity: 1; }
+
   /* 인벤토리 검색 */
   .inv-search-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
   .inv-search-input { width: 320px; max-width: 100%; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; }
@@ -1786,6 +1814,7 @@ function switchTab(t) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + t).classList.add('active');
   if (t === 'revenue-trend') renderSalesTrend();
+  if (t === 'inventory' && INV_RESULT) setupInvTableScrollSync(INV_ACTIVE_SECTION_ID); // 탭이 숨겨진 동안엔 폭을 정확히 잴 수 없어 다시 보일 때 재측정
   saveLastActiveTab(t);
 }
 
@@ -2007,6 +2036,7 @@ function renderInvAnalysis() {
     `</div>`;
 
   document.getElementById('inv-analysis-area').innerHTML = subtabHtml + searchBarHtml + sectionsHtml + buildReportDraftArea();
+  setupInvTableScrollSync(INV_ACTIVE_SECTION_ID); // 기본 활성 구간만 우선 측정(비활성 구간은 display:none이라 폭 측정이 부정확 — 탭 전환 시 재측정)
 }
 
 function switchInvSectionTab(id) {
@@ -2016,6 +2046,86 @@ function switchInvSectionTab(id) {
   document.querySelectorAll('#inv-section-panels .inv-sub').forEach(el => el.classList.remove('active'));
   document.getElementById('inv-section-' + id).classList.add('active');
   if (INV_SEARCH_QUERY && INV_SEARCH_SCOPE === 'current') renderInvSearchResults();
+  setupInvTableScrollSync(id);
+}
+
+// ─── 인벤토리 비교: 표 상단 보조 스크롤바 + 우측 잘림 힌트 ──────────────────────
+// 표가 display:none 상태(비활성 탭)일 때는 폭을 정확히 잴 수 없으므로, 탭이 실제로 보일 때마다(활성화 시점) 다시 측정한다.
+
+function setupInvTableScrollSync(sectionId) {
+  const wrap = document.getElementById(`inv-table-wrap-${sectionId}`);
+  const topScroll = document.getElementById(`inv-table-top-scroll-${sectionId}`);
+  const topInner = document.getElementById(`inv-table-top-scroll-inner-${sectionId}`);
+  const fade = document.getElementById(`inv-table-fade-${sectionId}`);
+  if (!wrap || !topScroll || !topInner || !fade) return;
+  const table = wrap.querySelector('table');
+  if (!table) { topScroll.classList.remove('visible'); fade.classList.remove('visible'); return; }
+
+  const needsScroll = table.scrollWidth > wrap.clientWidth + 1;
+  topScroll.classList.toggle('visible', needsScroll);
+  topInner.style.width = table.scrollWidth + 'px';
+  const canScrollRight = needsScroll && (wrap.scrollLeft + wrap.clientWidth < table.scrollWidth - 1);
+  fade.classList.toggle('visible', canScrollRight);
+}
+
+let INV_TABLE_SCROLL_SYNCING = false; // 상/하단 스크롤바가 서로의 scroll 이벤트를 재귀 호출하지 않도록 방지
+
+function invTableSyncFromTop(sectionId) {
+  if (INV_TABLE_SCROLL_SYNCING) return;
+  INV_TABLE_SCROLL_SYNCING = true;
+  const topScroll = document.getElementById(`inv-table-top-scroll-${sectionId}`);
+  const wrap = document.getElementById(`inv-table-wrap-${sectionId}`);
+  if (wrap && topScroll) wrap.scrollLeft = topScroll.scrollLeft;
+  INV_TABLE_SCROLL_SYNCING = false;
+  updateInvTableFade(sectionId);
+}
+
+function invTableSyncFromWrap(sectionId) {
+  if (INV_TABLE_SCROLL_SYNCING) return;
+  INV_TABLE_SCROLL_SYNCING = true;
+  const topScroll = document.getElementById(`inv-table-top-scroll-${sectionId}`);
+  const wrap = document.getElementById(`inv-table-wrap-${sectionId}`);
+  if (wrap && topScroll) topScroll.scrollLeft = wrap.scrollLeft;
+  INV_TABLE_SCROLL_SYNCING = false;
+  updateInvTableFade(sectionId);
+}
+
+function updateInvTableFade(sectionId) {
+  const wrap = document.getElementById(`inv-table-wrap-${sectionId}`);
+  const fade = document.getElementById(`inv-table-fade-${sectionId}`);
+  if (!wrap || !fade) return;
+  const table = wrap.querySelector('table');
+  if (!table) return;
+  const needsScroll = table.scrollWidth > wrap.clientWidth + 1;
+  const canScrollRight = needsScroll && (wrap.scrollLeft + wrap.clientWidth < table.scrollWidth - 1);
+  fade.classList.toggle('visible', canScrollRight);
+}
+
+// 창 크기가 바뀌면 현재 보이는 구간의 스크롤바 필요 여부를 다시 계산(표가 화면 폭 안에 들어오면 상단 스크롤바를 숨김)
+window.addEventListener('resize', () => {
+  clearTimeout(window.__invTableResizeTimer);
+  window.__invTableResizeTimer = setTimeout(() => {
+    if (INV_ACTIVE_SECTION_ID) setupInvTableScrollSync(INV_ACTIVE_SECTION_ID);
+  }, 150);
+});
+
+// 변동내역 셀 클릭 시 해당 행 바로 아래에 전체 내용을 펼쳐 보여주는 행을 토글로 추가/제거
+function toggleInvChangeExpand(cellEl) {
+  const tr = cellEl.closest('tr');
+  if (!tr) return;
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('inv-change-expand-row')) {
+    next.remove();
+    cellEl.classList.remove('expanded');
+    return;
+  }
+  cellEl.classList.add('expanded');
+  const colCount = tr.children.length;
+  const text = cellEl.dataset.remark || '';
+  const expandRow = document.createElement('tr');
+  expandRow.className = 'inv-change-expand-row';
+  expandRow.innerHTML = `<td colspan="${colCount}">${escHtml(text)}</td>`;
+  tr.parentNode.insertBefore(expandRow, tr.nextSibling);
 }
 
 // ─── 인벤토리 비교: 검색 ────────────────────────────────────────────────────
@@ -2320,13 +2430,15 @@ function buildInvTable(sectionId, sec) {
 
     return `<tr class="${rowCls}">
       <td><span class="badge ${badgeMap[it.type]}">${labelMap[it.type]}</span></td>
-      <td>${escHtml(it.cust)}</td>
-      <td class="code">${escHtml(it.code)}</td>
+      <td><div class="inv-cust-cell" title="${escHtml(it.cust)}">${escHtml(it.cust)}</div></td>
+      <td class="code inv-nowrap-cell">${escHtml(it.code)}</td>
       <td><div class="proj-name" title="${escHtml(it.name)}">${escHtml(it.name)}</div></td>
       <td>${escHtml(it.sales)}</td>
-      <td>${escHtml(it.status)}</td>
-      <td>${escHtml(it.state)}</td>
-      <td style="font-size:11.5px;color:var(--text-sub)">${escHtml(remark)}</td>
+      <td class="inv-nowrap-cell">${escHtml(it.status)}</td>
+      <td class="inv-state-cell" title="${escHtml(it.state)}">${escHtml(it.state)}</td>
+      <td class="inv-change-cell" data-remark="${escHtml(remark)}" title="${escHtml(remark)}" onclick="toggleInvChangeExpand(this)">
+        <div class="inv-change-text">${escHtml(remark)}</div>
+      </td>
       <td class="inv-remark-cell" title="${escHtml(it.note)}" onclick="this.classList.toggle('expanded')">
         <div class="inv-remark-text">${it.note ? remarkToHtml(it.note) : '<span class="text-sub">-</span>'}</div>
       </td>
@@ -2344,14 +2456,21 @@ function buildInvTable(sectionId, sec) {
     <td class="amount">${fmtAmt(invSectionCurrTotal(sectionId))}</td>
   </tr>`;
 
-  return `<div class="table-wrap"><table>
-    <thead><tr>
-      <th>구분</th><th>고객사명</th><th>프로젝트코드</th><th>프로젝트명</th><th>영업담당자</th>
-      <th>수주확도</th><th>수주상태</th><th>변동내역</th><th>비고</th>
-      <th>제품(백만)</th><th>상품(백만)</th><th>용역(백만)</th><th>유지보수(백만)</th><th>총합계(백만)</th>
-    </tr></thead>
-    <tbody>${trs}${totalRow}</tbody>
-  </table></div>`;
+  return `
+  <div class="inv-table-top-scroll" id="inv-table-top-scroll-${sectionId}" onscroll="invTableSyncFromTop('${sectionId}')">
+    <div class="inv-table-top-scroll-inner" id="inv-table-top-scroll-inner-${sectionId}"></div>
+  </div>
+  <div class="inv-table-scroll-outer">
+    <div class="table-wrap" id="inv-table-wrap-${sectionId}" onscroll="invTableSyncFromWrap('${sectionId}')"><table>
+      <thead><tr>
+        <th>구분</th><th>고객사명</th><th>프로젝트코드</th><th>프로젝트명</th><th>영업담당자</th>
+        <th>수주확도</th><th>수주상태</th><th>변동내역</th><th>비고</th>
+        <th>제품(백만)</th><th>상품(백만)</th><th>용역(백만)</th><th>유지보수(백만)</th><th>총합계(백만)</th>
+      </tr></thead>
+      <tbody>${trs}${totalRow}</tbody>
+    </table></div>
+    <div class="inv-table-scroll-fade" id="inv-table-fade-${sectionId}"></div>
+  </div>`;
 }
 
 // ─── 인벤토리 비교: 보고문 초안 ─────────────────────────────────────────────────
