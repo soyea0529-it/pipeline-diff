@@ -1870,23 +1870,31 @@ function totalVal(row)    { return row ? (row['총합계'] || 0) : 0; }
 
 // ─── 인벤토리 비교: 전 구간 통합 변동 분석 ─────────────────────────────────────
 
+// 사업 매칭 키: 프로젝트코드 하나만 사용한다. 영업담당자·고객사명·프로젝트명·수주상태는 언제든
+// 바뀔 수 있는 값이라 키에 포함하면 같은 사업이 다른 사업으로 오인되어 "완전삭제/신규"로 잘못
+// 갈라지는 문제가 생긴다 — 이런 값은 매칭 이후 화면 표시·변동내역 텍스트에만 사용한다.
+function normalizeInvCode(v) { return String(v ?? '').trim(); }
+
 function runInvCompare() {
   const prevBy = {}, currBy = {}; // 프로젝트코드 -> { section, row }
   INV_SECTIONS.forEach(s => {
     (INV_FILES.prev[s.id]?.rows || []).forEach(r => {
-      const code = r['프로젝트코드'];
+      const code = normalizeInvCode(r['프로젝트코드']);
       if (code) prevBy[code] = { section: s.id, row: r };
     });
     (INV_FILES.curr[s.id]?.rows || []).forEach(r => {
-      const code = r['프로젝트코드'];
+      const code = normalizeInvCode(r['프로젝트코드']);
       if (code) currBy[code] = { section: s.id, row: r };
     });
   });
+  console.log('[인벤토리 비교] 매칭 키 구성: 프로젝트코드 단독(trim) — 영업담당자/고객사명/프로젝트명/수주상태는 키에 포함하지 않음');
+  console.log('[인벤토리 비교] 전주 코드 수:', Object.keys(prevBy).length, '/ 금주 코드 수:', Object.keys(currBy).length);
 
   const bySection = {};
   INV_SECTIONS.forEach(s => { bySection[s.id] = { rows: [], inflow: [], outflow: [], brandNew: [], fullyDeleted: [] }; });
 
   const allCodes = new Set([...Object.keys(prevBy), ...Object.keys(currBy)]);
+  const repChangedLog = [];
 
   allCodes.forEach(code => {
     const p = prevBy[code], c = currBy[code];
@@ -1897,6 +1905,11 @@ function runInvCompare() {
       cats[cat] = { prev: pv, curr: cv, diff: cv - pv };
     });
     const baseRow = (c && c.row) || (p && p.row);
+    const prevSales = p ? (p.row['영업담당자'] || '') : '';
+    const currSales = c ? (c.row['영업담당자'] || '') : '';
+    const repChanged = !!(p && c && prevSales !== currSales);
+    if (repChanged) repChangedLog.push({ code, prevSales, currSales });
+
     const item = {
       code,
       cust:   baseRow['고객사명']   || '',
@@ -1908,6 +1921,7 @@ function runInvCompare() {
       prevAmt: pAmt, currAmt: cAmt, diff: cAmt - pAmt,
       cats,
       prevSection: p?.section, currSection: c?.section,
+      repChanged, prevSales, // 담당자 변경 여부(양쪽 다 존재할 때만 판정) — 표/변동내역/보고문에서 사용
     };
 
     if (!p && c) {
@@ -1928,6 +1942,12 @@ function runInvCompare() {
       bySection[c.section].rows.push(item);
     }
   });
+
+  if (repChangedLog.length) {
+    console.log(`[인벤토리 비교] 담당자 변경 ${repChangedLog.length}건:`, repChangedLog.map(x => `${x.code} (${x.prevSales} → ${x.currSales})`));
+  } else {
+    console.log('[인벤토리 비교] 담당자 변경 건 없음');
+  }
 
   INV_RESULT = { bySection, prevBy, currBy };
   renderInvAnalysis();
@@ -2240,14 +2260,19 @@ function buildMoveBlock(sectionId, sec) {
   </div>`;
 }
 
+// 담당자 변경 항목은 금액 변동 여부와 무관하게 항상 표기 — 금액도 같이 바뀌었으면 두 내용을 " / "로 이어 붙인다.
 function buildRemark(it) {
-  if (it.type === 'new' || it.type === 'del' || it.type === 'same') return '';
+  const repPart = it.repChanged ? `영업담당자 ${it.prevSales || '(빈값)'} → ${it.sales || '(빈값)'}` : '';
+
+  if (it.type === 'new' || it.type === 'del') return '';
+  if (it.type === 'same') return repPart;
   if (it.type === 'move') {
     const fromLabel = INV_SECTION_LABEL[it.prevSection];
     const toLabel   = INV_SECTION_LABEL[it.currSection];
-    if (Math.abs(it.diff) < AMT_EPS) return `${fromLabel} → ${toLabel} 구간이동`;
-    const dir = it.diff > 0 ? '증가' : '감소';
-    return `${invPrevLabel()} ${fmtAmt(it.prevAmt)}백만원 → 금주 ${fmtAmt(it.currAmt)}백만원(${fmtAmt(Math.abs(it.diff))}백만원 ${dir})`;
+    const base = Math.abs(it.diff) < AMT_EPS
+      ? `${fromLabel} → ${toLabel} 구간이동`
+      : `${invPrevLabel()} ${fmtAmt(it.prevAmt)}백만원 → 금주 ${fmtAmt(it.currAmt)}백만원(${fmtAmt(Math.abs(it.diff))}백만원 ${it.diff > 0 ? '증가' : '감소'})`;
+    return repPart ? `${base} / ${repPart}` : base;
   }
   // changed: 변한 카테고리만 나열
   const parts = [];
@@ -2255,7 +2280,9 @@ function buildRemark(it) {
     const d = it.cats[cat].diff;
     if (Math.abs(d) >= AMT_EPS) parts.push(`${cat} ${d > 0 ? '+' : ''}${fmtAmt(d)}백만`);
   });
-  return parts.join(', ');
+  const base = parts.join(', ');
+  if (!repPart) return base;
+  return base ? `${base} / ${repPart}` : repPart;
 }
 
 function buildInvTable(sectionId, sec) {
@@ -2410,6 +2437,20 @@ function buildSectionGroups(sectionId, sec) {
     });
   }
 
+  // 담당자 변경: 금액 변동 여부와 무관하게 별도 분류로 표기(금액이 함께 바뀐 건은 금액변동 분류에도 중복 표시됨)
+  const repChanged = sec.rows.filter(r => r.repChanged);
+  if (repChanged.length) {
+    groups.push({
+      subtitle: `담당자 변경 ${repChanged.length}건`,
+      noAmt: true,
+      items: sortByAbsAmt(repChanged.map(it => ({
+        code: it.code,
+        text: `${it.name} (${it.prevSales || '(빈값)'} → ${it.sales || '(빈값)'})`,
+        amt: it.diff,
+      }))),
+    });
+  }
+
   return groups;
 }
 
@@ -2419,19 +2460,23 @@ function buildSectionReportText(sectionNum, sectionId, compareDate) {
   const prevTotal = invSectionPrevTotal(sectionId);
   const currTotal = invSectionCurrTotal(sectionId);
   const diff = currTotal - prevTotal;
+  const hasRepChange = sec.rows.some(r => r.repChanged);
 
-  if (Math.abs(diff) < AMT_EPS) {
+  if (Math.abs(diff) < AMT_EPS && !hasRepChange) {
     return `${sectionNum}. ${label} : ${compareDate} 대비 변동 없음`;
   }
 
-  const dir = diff >= 0 ? '상승' : '감소';
-  const header = `${sectionNum}. ${label} : ${compareDate} 대비 ${formatReportAmt(diff)} ${dir}`;
+  const header = Math.abs(diff) < AMT_EPS
+    ? `${sectionNum}. ${label} : ${compareDate} 대비 담당자 변경만 있음`
+    : `${sectionNum}. ${label} : ${compareDate} 대비 ${formatReportAmt(diff)} ${diff >= 0 ? '상승' : '감소'}`;
 
   const groups = buildSectionGroups(sectionId, sec);
   const single = groups.length === 1;
   const groupTexts = groups.map((g, i) => {
     const itemIndent = single ? '  ' : '    ';
-    const itemLines = g.items.map(it => `${itemIndent}- ${it.code} ${it.text} / ${formatReportAmt(it.amt)}`);
+    const itemLines = g.items.map(it => g.noAmt
+      ? `${itemIndent}- ${it.code} ${it.text}`
+      : `${itemIndent}- ${it.code} ${it.text} / ${formatReportAmt(it.amt)}`);
     if (single) return itemLines.join('\n');
     return `  ${sectionNum}.${i + 1}. ${g.subtitle}\n` + itemLines.join('\n');
   });
