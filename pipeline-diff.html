@@ -3257,15 +3257,12 @@ function renderPipelineChart() {
 */
 
 // ─── 매출 추이: 목표 상수 ─────────────────────────────────────────────────────
-// 단위: 백만원. 본부 연간 합계 82,068백만 / 1팀 연간 합계 29,062백만 — 검증용
+// 단위: 백만원. 본부 연간 합계 80,000백만(800억, 2026-08-24 법인 전체 기준 개정) / 1팀 연간 합계 29,062백만 — 검증용
+// 본부는 카테고리(제품/상품/용역/유지보수) 구분 없는 법인 전체 분기 목표만 제공됨 — quarterTargetTotal()에서
+// 스코프별로 다르게 처리(본부는 분기값 그대로, 팀1은 기존대로 4개 카테고리 합산).
 
 const SALES_TARGET_2026 = {
-  본부: {
-    제품:     { Q1: 496,   Q2: 1040,  Q3: 1999,  Q4: 9782  },
-    상품:     { Q1: 1781,  Q2: 607,   Q3: 6376,  Q4: 14490 },
-    용역:     { Q1: 2959,  Q2: 7256,  Q3: 7512,  Q4: 27329 },
-    유지보수: { Q1: 17,    Q2: 22,    Q3: 36,    Q4: 366   }
-  },
+  본부: { Q1: 5250, Q2: 5920, Q3: 18920, Q4: 49910 }, // 52.5억 / 59.2억 / 189.2억 / 499.1억 = 800억
   팀1: {
     제품:     { Q1: 415,   Q2: 536,   Q3: 600,   Q4: 4864  },
     상품:     { Q1: 855,   Q2: 364,   Q3: 437,   Q4: 2088  },
@@ -4081,7 +4078,8 @@ function monthQuarter(m) { return SALES_QUARTERS[Math.floor((m - 1) / 3)]; }
 
 function quarterTargetTotal(scope, q) {
   const t = SALES_TARGET_2026[scope];
-  return INV_CATS.reduce((s, cat) => s + t[cat][q], 0); // 백만원
+  if (scope === '본부') return t[q]; // 본부는 카테고리 구분 없는 법인 전체 분기 목표(백만원) 그대로
+  return INV_CATS.reduce((s, cat) => s + t[cat][q], 0); // 팀1은 기존대로 4개 카테고리 합산
 }
 function annualTargetTotal(scope) {
   return SALES_QUARTERS.reduce((s, q) => s + quarterTargetTotal(scope, q), 0); // 백만원
