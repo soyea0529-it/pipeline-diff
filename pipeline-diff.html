@@ -6695,48 +6695,62 @@ function runReportCompare() {
     return;
   }
 
-  const buildMap = (file, col) => {
+  // 같은 프로젝트코드가 파일 안에서 여러 행으로 쪼개져 있는 경우(분할 청구 등)를 대비해
+  // 단일 행이 아니라 "키가 같은 행들의 배열"로 묶는다. 금액은 그 행들의 합계로 비교하고,
+  // 행 개수 자체가 1군/2군에서 다르면(분할 방식이 달라졌다는 뜻) 별도로 표시한다.
+  const groupRows = (file, col) => {
     const map = new Map();
     file.rows.forEach(r => {
       const k = rcNormText(r[col]);
-      if (k) map.set(k, r);
+      if (!k) return;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(r);
     });
     return map;
   };
-  const mapA = buildMap(RC_FILE_A, keyField.colA);
-  const mapB = buildMap(RC_FILE_B, keyField.colB);
+  const mapA = groupRows(RC_FILE_A, keyField.colA);
+  const mapB = groupRows(RC_FILE_B, keyField.colB);
   const allKeys = new Set([...mapA.keys(), ...mapB.keys()]);
   const otherFields = RC_MAPPING.filter(f => !f.key);
   const primaryField = otherFields.find(f => f.primary && f.type === 'number');
 
   const items = [];
   allKeys.forEach(key => {
-    const rowA = mapA.get(key) || null;
-    const rowB = mapB.get(key) || null;
+    const rowsA = mapA.get(key) || [];
+    const rowsB = mapB.get(key) || [];
+    const bothExist = rowsA.length > 0 && rowsB.length > 0;
+    const rowCountChanged = bothExist && rowsA.length !== rowsB.length;
+
     const fields = otherFields.map(f => {
       if (f.type === 'number') {
-        const prev = rowA && f.colA >= 0 ? toNum(rowA[f.colA]) : 0;
-        const curr = rowB && f.colB >= 0 ? toNum(rowB[f.colB]) : 0;
+        // 같은 키의 행이 여러 개면(분할 청구 등) 합계로 비교
+        const prev = f.colA >= 0 ? rowsA.reduce((s, r) => s + toNum(r[f.colA]), 0) : 0;
+        const curr = f.colB >= 0 ? rowsB.reduce((s, r) => s + toNum(r[f.colB]), 0) : 0;
         const diff = curr - prev;
-        return { ...f, prev, curr, diff, changed: !!(rowA && rowB) && Math.abs(diff) >= AMT_EPS_RC };
+        return { ...f, prev, curr, diff, changed: bothExist && Math.abs(diff) >= AMT_EPS_RC };
       }
-      const prev = rowA && f.colA >= 0 ? rcNormText(rowA[f.colA]) : '';
-      const curr = rowB && f.colB >= 0 ? rcNormText(rowB[f.colB]) : '';
-      return { ...f, prev, curr, changed: !!(rowA && rowB) && prev !== curr };
+      // 텍스트 항목은 여러 행 중 값이 있는 첫 행 기준(분할 행이어도 프로젝트명 등은 보통 동일)
+      const firstNonEmpty = (rows, col) => {
+        for (const r of rows) { const v = rcNormText(r[col]); if (v) return v; }
+        return '';
+      };
+      const prev = f.colA >= 0 ? firstNonEmpty(rowsA, f.colA) : '';
+      const curr = f.colB >= 0 ? firstNonEmpty(rowsB, f.colB) : '';
+      return { ...f, prev, curr, changed: bothExist && prev !== curr };
     });
 
     let type;
-    if (!rowA) type = 'new';
-    else if (!rowB) type = 'del';
+    if (rowsA.length === 0) type = 'new';
+    else if (rowsB.length === 0) type = 'del';
     else if (primaryField) {
       const pf = fields.find(f => f.id === primaryField.id);
       if (pf && pf.changed) type = pf.diff > 0 ? 'up' : 'down';
-      else if (fields.some(f => f.changed)) type = 'changed';
+      else if (fields.some(f => f.changed) || rowCountChanged) type = 'changed';
       else type = 'same';
-    } else if (fields.some(f => f.changed)) type = 'changed';
+    } else if (fields.some(f => f.changed) || rowCountChanged) type = 'changed';
     else type = 'same';
 
-    items.push({ key, type, fields });
+    items.push({ key, type, fields, countA: rowsA.length, countB: rowsB.length, rowCountChanged });
   });
 
   const order = { new: 0, up: 1, down: 2, changed: 3, same: 4, del: 5 };
@@ -6775,26 +6789,36 @@ function renderReportCompareResult() {
   const badgeMap = { new: 'badge-new', del: 'badge-del', up: 'badge-up', down: 'badge-down', changed: 'badge-changed', same: 'badge-same' };
   const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', changed: '변동', same: '유지' };
 
+  const rowCountChangedCount = items.filter(it => it.rowCountChanged).length;
+
   const summary = `
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:20px">
       <div class="summary-card"><div class="s-label">신규</div><div class="s-value">${by.new.length}</div></div>
       <div class="summary-card"><div class="s-label">삭제</div><div class="s-value">${by.del.length}</div></div>
       <div class="summary-card"><div class="s-label">증가</div><div class="s-value">${by.up.length}</div></div>
       <div class="summary-card"><div class="s-label">감소</div><div class="s-value">${by.down.length}</div></div>
       <div class="summary-card"><div class="s-label">변동</div><div class="s-value">${by.changed.length}</div></div>
       <div class="summary-card"><div class="s-label">유지</div><div class="s-value">${by.same.length}</div></div>
+      <div class="summary-card"><div class="s-label">행 개수 불일치</div><div class="s-value">${rowCountChangedCount}</div></div>
     </div>`;
 
   const keyField = mapping.find(f => f.key);
   const otherFields = mapping.filter(f => !f.key);
 
-  const thead = `<thead><tr><th>구분</th><th>${escHtml(keyField.label)}</th>${otherFields.map(f => `<th>${escHtml(f.label)}</th>`).join('')}</tr></thead>`;
-  const trs = items.map(it => `
+  const thead = `<thead><tr><th>구분</th><th>${escHtml(keyField.label)}</th><th>행 개수</th>${otherFields.map(f => `<th>${escHtml(f.label)}</th>`).join('')}</tr></thead>`;
+  const trs = items.map(it => {
+    const countCell = it.type === 'new' ? `${it.countB}건`
+      : it.type === 'del' ? `${it.countA}건`
+      : it.rowCountChanged ? `<span class="diff-changed">${it.countA}건 → ${it.countB}건</span>`
+      : `${it.countA}건`;
+    return `
     <tr>
       <td><span class="badge ${badgeMap[it.type]}">${labelMap[it.type]}</span></td>
       <td class="code">${escHtml(it.key)}</td>
+      <td>${countCell}</td>
       ${it.fields.map(f => `<td class="${f.type === 'number' ? 'amount' : ''}">${rcFieldCellHtml(f, it.type)}</td>`).join('')}
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   el.innerHTML = summary + `<div class="table-wrap"><table>${thead}<tbody>${trs}</tbody></table></div>`;
 }
@@ -6858,6 +6882,8 @@ async function downloadReportCompareExcel() {
   ws.columns = [
     { header: '구분', width: 10 },
     { header: keyField.label, width: 16 },
+    { header: '행개수(1군)', width: 12 },
+    { header: '행개수(2군)', width: 12 },
     ...otherFields.flatMap(f => f.type === 'number'
       ? [{ header: `${f.label}(이전)`, width: 14 }, { header: `${f.label}(이후)`, width: 14 }, { header: `${f.label}(증감)`, width: 14 }]
       : [{ header: `${f.label}(이전)`, width: 20 }, { header: `${f.label}(이후)`, width: 20 }]),
@@ -6865,7 +6891,7 @@ async function downloadReportCompareExcel() {
   ws.getRow(1).font = { bold: true };
 
   items.forEach(it => {
-    const row = [labelMap[it.type], it.key];
+    const row = [labelMap[it.type], it.key, it.countA, it.countB];
     it.fields.forEach(f => {
       const prevVal = it.type === 'new' ? '' : f.prev;
       const currVal = it.type === 'del' ? '' : f.curr;
