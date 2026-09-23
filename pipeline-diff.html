@@ -314,6 +314,7 @@
   .move-icon { font-weight: 700; flex-shrink: 0; min-width: 78px; }
   .move-in .move-icon, .move-new .move-icon { color: var(--up); }
   .move-out .move-icon, .move-del .move-icon { color: var(--down); }
+  .move-changed .move-icon { color: #f5c518; }
   .move-code { font-family: monospace; font-size: 11px; color: var(--accent); flex-shrink: 0; }
   .move-name { flex: 1; min-width: 120px; }
   .move-section { color: var(--text-sub); font-size: 11.5px; flex-shrink: 0; }
@@ -6772,15 +6773,11 @@ function runReportCompare() {
       return { ...f, prev, curr, changed: bothExist && prev !== curr };
     });
 
+    // 증가/감소 구분 없이 금액·텍스트·행 개수 중 하나라도 바뀌면 '변동'으로 통합
     let type;
     if (rowsA.length === 0) type = 'new';
     else if (rowsB.length === 0) type = 'del';
-    else if (primaryField) {
-      const pf = fields.find(f => f.id === primaryField.id);
-      if (pf && pf.changed) type = pf.diff > 0 ? 'up' : 'down';
-      else if (fields.some(f => f.changed) || rowCountChanged) type = 'changed';
-      else type = 'same';
-    } else if (fields.some(f => f.changed) || rowCountChanged) type = 'changed';
+    else if (fields.some(f => f.changed) || rowCountChanged) type = 'changed';
     else type = 'same';
 
     items.push({ key, type, fields, countA: rowsA.length, countB: rowsB.length, rowCountChanged });
@@ -6808,10 +6805,95 @@ function rcFieldCellHtml(f, type) {
   return `<span class="diff-changed">${escHtml(f.prev || '-')} → ${escHtml(f.curr || '-')}</span>`;
 }
 
-// 결과 정렬: 변동이 있는 항목(신규 → 증가 → 감소 → 삭제 → 변동)을 먼저, 변경 없이 유지된 항목은 맨 뒤에
-const RC_TYPE_ORDER = { new: 0, up: 1, down: 2, del: 3, changed: 4, same: 5 };
+// 결과 정렬: 신규 → 변동 → 삭제 → 유지 (변경 없이 유지된 항목은 맨 뒤에)
+const RC_TYPE_ORDER = { new: 0, changed: 1, del: 2, same: 3 };
 function rcSortItems(items) {
+  // 예전 버전에서 저장된 결과의 증가/감소(up/down)는 '변동'으로 간주
+  items.forEach(it => { if (it.type === 'up' || it.type === 'down') it.type = 'changed'; });
   return items.sort((a, b) => (RC_TYPE_ORDER[a.type] - RC_TYPE_ORDER[b.type]) || a.key.localeCompare(b.key));
+}
+
+// 요약줄·콜아웃의 기준 금액 필드: 사용자가 지정한 기준금액, 없으면 첫 번째 금액 필드
+function rcPrimaryField(mapping) {
+  const nums = mapping.filter(f => !f.key && f.type === 'number');
+  return nums.find(f => f.primary) || nums[0] || null;
+}
+// 콜아웃에 표시할 명칭 필드: 기본 '프로젝트명' 항목, 없으면 첫 번째 텍스트 필드
+function rcNameField(mapping) {
+  const texts = mapping.filter(f => !f.key && f.type !== 'number');
+  return texts.find(rcIsNameField) || texts[0] || null;
+}
+function rcItemField(it, f) { return f ? it.fields.find(x => x.id === f.id) : null; }
+
+// (a) "파일1 대비 파일2 비교분석" 요약줄 — 합계는 RC_RESULT.items에 이미 계산된(단위 환산된) prev/curr를 합산
+function rcBuildSummaryLine(items, mapping) {
+  const pf = rcPrimaryField(mapping);
+  if (!pf) return '';
+  const sumOf = f => items.reduce((acc, it) => {
+    const x = rcItemField(it, f);
+    return x ? { prev: acc.prev + (Number(x.prev) || 0), curr: acc.curr + (Number(x.curr) || 0) } : acc;
+  }, { prev: 0, curr: 0 });
+
+  const t = sumOf(pf);
+  const diff = t.curr - t.prev;
+  const head = `파일1 대비 파일2 비교분석 &nbsp;${escHtml(pf.label)} 기준 `;
+  const totals = `파일1 합계 ${fmtAmt(t.prev)}백만 → 파일2 합계 ${fmtAmt(t.curr)}백만`;
+  const summaryText = Math.abs(diff) < AMT_EPS_RC
+    ? `${head}<b>변동 없음</b> &nbsp;|&nbsp; ${totals}`
+    : `${head}${diff > 0 ? '▲' : '▼'} <b class="${diff > 0 ? 'diff-up' : 'diff-down'}">${fmtAmt(Math.abs(diff))}백만 ${diff > 0 ? '증가' : '감소'}</b> &nbsp;|&nbsp; ${totals}`;
+
+  // 기준 필드 외 금액 필드별 증감 (buildInvCategoryDiffLineHtml과 동일한 표기)
+  const others = mapping.filter(f => !f.key && f.type === 'number' && f.id !== pf.id);
+  const catItems = others.map(f => {
+    const s2 = sumOf(f);
+    const d = s2.curr - s2.prev;
+    if (Math.abs(d) < AMT_EPS_RC) {
+      return `<span class="inv-cat-diff-item"><span class="inv-cat-diff-label">${escHtml(f.label)}</span><span class="inv-cat-diff-same">─</span></span>`;
+    }
+    return `<span class="inv-cat-diff-item"><span class="inv-cat-diff-label">${escHtml(f.label)}</span><span class="${d > 0 ? 'diff-up' : 'diff-down'}">${d > 0 ? '▲' : '▼'}${fmtAmt(Math.abs(d))}백만</span></span>`;
+  });
+  const catLine = catItems.length ? `<div class="inv-cat-diff-line">${catItems.join('')}</div>` : '';
+  return `<div class="inv-summary-line">${summaryText}${catLine}</div>`;
+}
+
+// (b) 변동 내역 요약 콜아웃 — moveLine()/buildMoveBlock()과 같은 마크업·클래스 재사용
+function rcMoveLine(icon, cls, label, it, name, note) {
+  return `<div class="inv-move-line ${cls}">
+    <span class="move-icon">${icon}${label}</span>
+    <span class="move-code">${escHtml(it.key)}</span>
+    <span class="move-name">${escHtml(name || '')}</span>
+    <span class="move-amt">— ${note}</span>
+  </div>`;
+}
+function rcBuildMoveBlock(items, mapping) {
+  const pf = rcPrimaryField(mapping);
+  const nf = rcNameField(mapping);
+  const nameOf = it => { const x = rcItemField(it, nf); return x ? (it.type === 'del' ? x.prev : x.curr) : ''; };
+  const amtOf = (it, side) => { const x = rcItemField(it, pf); return x ? ` · ${fmtAmt(x[side])}백만` : ''; };
+
+  const changeNote = it => {
+    const parts = [];
+    if (it.rowCountChanged) parts.push(`행 ${it.countA}건→${it.countB}건`);
+    it.fields.filter(f => f.changed).forEach(f => {
+      if (f.type === 'number') {
+        parts.push(`${escHtml(f.label)} ${fmtAmt(f.prev)}→${fmtAmt(f.curr)}(${f.diff > 0 ? '▲' : '▼'}${fmtAmt(Math.abs(f.diff))})`);
+      } else {
+        parts.push(`${escHtml(f.label)} ${escHtml(f.prev || '(빈값)')}→${escHtml(f.curr || '(빈값)')}`);
+      }
+    });
+    return parts.join(' · ');
+  };
+
+  const lines = [];
+  items.filter(it => it.type === 'new').forEach(it => lines.push(rcMoveLine('🆕', 'move-new', '생성', it, nameOf(it), '파일2에만 존재' + amtOf(it, 'curr'))));
+  items.filter(it => it.type === 'del').forEach(it => lines.push(rcMoveLine('✗', 'move-del', '삭제', it, nameOf(it), '파일1에만 존재' + amtOf(it, 'prev'))));
+  items.filter(it => it.type === 'changed').forEach(it => lines.push(rcMoveLine('●', 'move-changed', '변동', it, nameOf(it), changeNote(it))));
+
+  if (!lines.length) return '';
+  return `<div class="inv-move-block">
+    <div class="inv-move-title">변동 내역 요약 (2에 생성됨 / 2에서 삭제됨 / 1 대비 변경됨)</div>
+    ${lines.join('')}
+  </div>`;
 }
 
 function renderReportCompareResult() {
@@ -6822,20 +6904,18 @@ function renderReportCompareResult() {
   }
   const { items, mapping } = RC_RESULT;
   rcSortItems(items);
-  const by = { new: [], del: [], up: [], down: [], changed: [], same: [] };
+  const by = { new: [], del: [], changed: [], same: [] };
   items.forEach(it => by[it.type].push(it));
 
-  const badgeMap = { new: 'badge-new', del: 'badge-del', up: 'badge-up', down: 'badge-down', changed: 'badge-changed', same: 'badge-same' };
-  const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', changed: '변동', same: '유지' };
+  const badgeMap = { new: 'badge-new', del: 'badge-del', changed: 'badge-changed', same: 'badge-same' };
+  const labelMap = { new: '신규', del: '삭제', changed: '변동', same: '유지' };
 
   const rowCountChangedCount = items.filter(it => it.rowCountChanged).length;
 
   const summary = `
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
       <div class="summary-card"><div class="s-label">신규</div><div class="s-value">${by.new.length}</div></div>
       <div class="summary-card"><div class="s-label">삭제</div><div class="s-value">${by.del.length}</div></div>
-      <div class="summary-card"><div class="s-label">증가</div><div class="s-value">${by.up.length}</div></div>
-      <div class="summary-card"><div class="s-label">감소</div><div class="s-value">${by.down.length}</div></div>
       <div class="summary-card"><div class="s-label">변동</div><div class="s-value">${by.changed.length}</div></div>
       <div class="summary-card"><div class="s-label">유지</div><div class="s-value">${by.same.length}</div></div>
       <div class="summary-card"><div class="s-label">행 개수 불일치</div><div class="s-value">${rowCountChangedCount}</div></div>
@@ -6859,7 +6939,10 @@ function renderReportCompareResult() {
     </tr>`;
   }).join('');
 
-  el.innerHTML = summary + `<div class="table-wrap"><table>${thead}<tbody>${trs}</tbody></table></div>`;
+  // 전부 유지면 요약줄/변동 내역 콜아웃은 생략
+  const hasChange = items.some(it => it.type !== 'same');
+  const topBlocks = hasChange ? rcBuildSummaryLine(items, mapping) + rcBuildMoveBlock(items, mapping) : '';
+  el.innerHTML = topBlocks + summary + `<div class="table-wrap"><table>${thead}<tbody>${trs}</tbody></table></div>`;
 }
 
 function resetReportCompare() {
@@ -6915,7 +6998,7 @@ async function downloadReportCompareExcel() {
   rcSortItems(items);
   const keyField = mapping.find(f => f.key);
   const otherFields = mapping.filter(f => !f.key);
-  const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', changed: '변동', same: '유지' };
+  const labelMap = { new: '신규', del: '삭제', changed: '변동', same: '유지' };
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('비교결과');
