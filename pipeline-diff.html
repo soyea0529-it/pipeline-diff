@@ -143,6 +143,7 @@
   .rc-mapping-table th, .rc-mapping-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; text-align: left; white-space: nowrap; }
   .rc-mapping-table select, .rc-mapping-table input[type=text] { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 6px; font-size: 12px; max-width: 200px; }
   .rc-mapping-table input[type=radio] { cursor: pointer; }
+  .rc-mapping-table select.rc-unit-select { max-width: 80px; }
   .rc-key-tag { font-size: 10px; font-weight: 700; color: var(--accent); }
   .rc-remove-btn { background: none; border: none; color: var(--text-sub); cursor: pointer; font-size: 14px; }
   .rc-remove-btn:hover { color: var(--down); }
@@ -787,7 +788,7 @@
     <div class="rc-mapping-card" id="rc-mapping-section" style="display:none">
       <div class="chart-card-title">비교 항목 매칭</div>
       <table class="rc-mapping-table">
-        <thead><tr><th>키</th><th>항목명</th><th>파일1 헤더</th><th>파일2 헤더</th><th>유형</th><th>기준금액</th><th></th></tr></thead>
+        <thead><tr><th>키</th><th>항목명</th><th>파일1 헤더 · 단위</th><th>파일2 헤더 · 단위</th><th>유형</th><th>기준금액</th><th></th></tr></thead>
         <tbody id="rc-mapping-rows"></tbody>
       </table>
       <div class="btn-row">
@@ -6499,16 +6500,23 @@ function setupH1RevenueUpload() {
 const RC_STORAGE_KEY = 'report_compare_state';
 const RC_PREF_KEY    = 'report_compare_field_pref'; // 항목별 마지막 선택 헤더 텍스트 기억 (localStorage)
 const AMT_EPS_RC = 0.05;
+// 금액 단위: 비교·표시는 항상 백만원 기준. 파일에 원 단위로 저장된 경우 항목별로 지정해 환산한다.
+const RC_UNIT_FACTOR = { '백만원': 1, '원': 1 / 1000000 };
+function rcUnitFactor(u) { return RC_UNIT_FACTOR[u] || 1; }
+function rcUnitOptions(selected) {
+  const u = selected || '백만원';
+  return Object.keys(RC_UNIT_FACTOR).map(k => `<option value="${k}"${k === u ? ' selected' : ''}>${k}</option>`).join('');
+}
 
 function rcDefaultMapping() {
   return [
-    { id: 'code',        label: '프로젝트코드', type: 'text',   key: true,  primary: false, colA: -1, colB: -1 },
-    { id: 'name',        label: '프로젝트명',   type: 'text',   key: false, primary: false, colA: -1, colB: -1 },
-    { id: 'amt_product', label: '제품금액',     type: 'number', key: false, primary: false, colA: -1, colB: -1 },
-    { id: 'amt_goods',   label: '상품금액',     type: 'number', key: false, primary: false, colA: -1, colB: -1 },
-    { id: 'amt_service', label: '용역금액',     type: 'number', key: false, primary: false, colA: -1, colB: -1 },
-    { id: 'amt_maint',   label: '유지보수금액', type: 'number', key: false, primary: false, colA: -1, colB: -1 },
-    { id: 'amt_total',   label: '합계금액',     type: 'number', key: false, primary: true,  colA: -1, colB: -1 },
+    { id: 'code',        label: '프로젝트코드', type: 'text',   key: true,  primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
+    { id: 'name',        label: '프로젝트명',   type: 'text',   key: false, primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
+    { id: 'amt_product', label: '제품금액',     type: 'number', key: false, primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
+    { id: 'amt_goods',   label: '상품금액',     type: 'number', key: false, primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
+    { id: 'amt_service', label: '용역금액',     type: 'number', key: false, primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
+    { id: 'amt_maint',   label: '유지보수금액', type: 'number', key: false, primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
+    { id: 'amt_total',   label: '합계금액',     type: 'number', key: false, primary: true,  colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' },
   ];
 }
 
@@ -6601,6 +6609,8 @@ function rcSaveFieldPrefs() {
     prefs[f.id] = {
       a: f.colA >= 0 && RC_FILE_A ? (RC_FILE_A.columns[f.colA] || {}).label || null : null,
       b: f.colB >= 0 && RC_FILE_B ? (RC_FILE_B.columns[f.colB] || {}).label || null : null,
+      unitA: f.unitA || '백만원',
+      unitB: f.unitB || '백만원',
     };
   });
   try { localStorage.setItem(RC_PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* 저장 공간 부족 시 무시 */ }
@@ -6624,8 +6634,14 @@ function rcApplyFieldPrefs() {
   const prefs = rcLoadFieldPrefs();
   RC_MAPPING.forEach(f => {
     const pref = prefs[f.id];
-    if (RC_FILE_A && f.colA < 0) f.colA = rcGuessColumn(RC_FILE_A.columns, f.label, pref && pref.a);
-    if (RC_FILE_B && f.colB < 0) f.colB = rcGuessColumn(RC_FILE_B.columns, f.label, pref && pref.b);
+    if (RC_FILE_A && f.colA < 0) {
+      f.colA = rcGuessColumn(RC_FILE_A.columns, f.label, pref && pref.a);
+      if (f.colA >= 0 && pref && pref.unitA) f.unitA = pref.unitA;
+    }
+    if (RC_FILE_B && f.colB < 0) {
+      f.colB = rcGuessColumn(RC_FILE_B.columns, f.label, pref && pref.b);
+      if (f.colB >= 0 && pref && pref.unitB) f.unitB = pref.unitB;
+    }
   });
 }
 
@@ -6643,8 +6659,8 @@ function rcRenderMappingRows() {
     <tr data-idx="${i}">
       <td>${f.key ? '<span class="rc-key-tag">키</span>' : ''}</td>
       <td><input type="text" value="${escHtml(f.label)}" ${f.key ? 'readonly' : ''} onchange="rcUpdateField(${i}, 'label', this.value)"></td>
-      <td><select onchange="rcUpdateField(${i}, 'colA', this.value)">${rcColumnOptions(RC_FILE_A && RC_FILE_A.columns, f.colA)}</select></td>
-      <td><select onchange="rcUpdateField(${i}, 'colB', this.value)">${rcColumnOptions(RC_FILE_B && RC_FILE_B.columns, f.colB)}</select></td>
+      <td><select onchange="rcUpdateField(${i}, 'colA', this.value)">${rcColumnOptions(RC_FILE_A && RC_FILE_A.columns, f.colA)}</select>${f.type === 'number' ? ` <select class="rc-unit-select" title="파일1 금액 단위" onchange="rcUpdateField(${i}, 'unitA', this.value)">${rcUnitOptions(f.unitA)}</select>` : ''}</td>
+      <td><select onchange="rcUpdateField(${i}, 'colB', this.value)">${rcColumnOptions(RC_FILE_B && RC_FILE_B.columns, f.colB)}</select>${f.type === 'number' ? ` <select class="rc-unit-select" title="파일2 금액 단위" onchange="rcUpdateField(${i}, 'unitB', this.value)">${rcUnitOptions(f.unitB)}</select>` : ''}</td>
       <td>
         <select ${f.key ? 'disabled' : ''} onchange="rcUpdateField(${i}, 'type', this.value)">
           <option value="text"${f.type === 'text' ? ' selected' : ''}>텍스트</option>
@@ -6675,8 +6691,9 @@ function rcSetPrimary(idx) {
 
 function rcAddMappingRow() {
   RC_ROW_SEQ++;
-  RC_MAPPING.push({ id: `custom_${RC_ROW_SEQ}`, label: '새 항목', type: 'text', key: false, primary: false, colA: -1, colB: -1 });
+  RC_MAPPING.push({ id: `custom_${RC_ROW_SEQ}`, label: '새 항목', type: 'text', key: false, primary: false, colA: -1, colB: -1, unitA: '백만원', unitB: '백만원' });
   rcRenderMappingRows();
+  saveReportCompareState();
 }
 
 function rcRemoveField(idx) {
@@ -6724,8 +6741,9 @@ function runReportCompare() {
     const fields = otherFields.map(f => {
       if (f.type === 'number') {
         // 같은 키의 행이 여러 개면(분할 청구 등) 합계로 비교
-        const prev = f.colA >= 0 ? rowsA.reduce((s, r) => s + toNum(r[f.colA]), 0) : 0;
-        const curr = f.colB >= 0 ? rowsB.reduce((s, r) => s + toNum(r[f.colB]), 0) : 0;
+        // 파일별로 지정한 단위(원/백만원)를 백만원으로 환산해 합산
+        const prev = f.colA >= 0 ? rowsA.reduce((s, r) => s + toNum(r[f.colA]), 0) * rcUnitFactor(f.unitA) : 0;
+        const curr = f.colB >= 0 ? rowsB.reduce((s, r) => s + toNum(r[f.colB]), 0) * rcUnitFactor(f.unitB) : 0;
         const diff = curr - prev;
         return { ...f, prev, curr, diff, changed: bothExist && Math.abs(diff) >= AMT_EPS_RC };
       }
@@ -6805,7 +6823,7 @@ function renderReportCompareResult() {
   const keyField = mapping.find(f => f.key);
   const otherFields = mapping.filter(f => !f.key);
 
-  const thead = `<thead><tr><th>구분</th><th>${escHtml(keyField.label)}</th><th>행 개수</th>${otherFields.map(f => `<th>${escHtml(f.label)}</th>`).join('')}</tr></thead>`;
+  const thead = `<thead><tr><th>구분</th><th>${escHtml(keyField.label)}</th><th>행 개수</th>${otherFields.map(f => `<th>${escHtml(f.label)}${f.type === 'number' ? ' (백만원)' : ''}</th>`).join('')}</tr></thead>`;
   const trs = items.map(it => {
     const countCell = it.type === 'new' ? `${it.countB}건`
       : it.type === 'del' ? `${it.countA}건`
@@ -6885,7 +6903,7 @@ async function downloadReportCompareExcel() {
     { header: '행개수(1군)', width: 12 },
     { header: '행개수(2군)', width: 12 },
     ...otherFields.flatMap(f => f.type === 'number'
-      ? [{ header: `${f.label}(이전)`, width: 14 }, { header: `${f.label}(이후)`, width: 14 }, { header: `${f.label}(증감)`, width: 14 }]
+      ? [{ header: `${f.label}(이전·백만원)`, width: 16 }, { header: `${f.label}(이후·백만원)`, width: 16 }, { header: `${f.label}(증감·백만원)`, width: 16 }]
       : [{ header: `${f.label}(이전)`, width: 20 }, { header: `${f.label}(이후)`, width: 20 }]),
   ];
   ws.getRow(1).font = { bold: true };
