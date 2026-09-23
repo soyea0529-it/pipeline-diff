@@ -6527,6 +6527,13 @@ let RC_RESULT = null;
 let RC_ROW_SEQ = 0;
 
 function rcNormText(s) { return String(s ?? '').trim(); }
+// 기본 항목 '프로젝트명'(id: name)은 변동 판정에서 제외하고 가장 짧은 명칭 하나로 표시한다
+function rcIsNameField(f) { return f && f.id === 'name'; }
+function rcShortestText(values) {
+  let best = '';
+  values.forEach(v => { const t = rcNormText(v); if (t && (!best || t.length < best.length)) best = t; });
+  return best;
+}
 function rcNormLoose(s) { return rcNormText(s).replace(/\s+/g, '').toLowerCase(); }
 
 function rcReadWorkbook(file) {
@@ -6752,6 +6759,14 @@ function runReportCompare() {
         for (const r of rows) { const v = rcNormText(r[col]); if (v) return v; }
         return '';
       };
+      if (rcIsNameField(f)) {
+        // 프로젝트명: 같은 프로젝트코드면 명칭 차이는 변동으로 보지 않고, 두 파일(분할 행 포함) 중 가장 짧은 명칭 하나만 표시
+        const name = rcShortestText([
+          ...(f.colB >= 0 ? rowsB.map(r => r[f.colB]) : []),
+          ...(f.colA >= 0 ? rowsA.map(r => r[f.colA]) : []),
+        ]);
+        return { ...f, prev: name, curr: name, changed: false };
+      }
       const prev = f.colA >= 0 ? firstNonEmpty(rowsA, f.colA) : '';
       const curr = f.colB >= 0 ? firstNonEmpty(rowsB, f.colB) : '';
       return { ...f, prev, curr, changed: bothExist && prev !== curr };
@@ -6904,6 +6919,7 @@ async function downloadReportCompareExcel() {
     { header: '행개수(2군)', width: 12 },
     ...otherFields.flatMap(f => f.type === 'number'
       ? [{ header: `${f.label}(이전·백만원)`, width: 16 }, { header: `${f.label}(이후·백만원)`, width: 16 }, { header: `${f.label}(증감·백만원)`, width: 16 }]
+      : rcIsNameField(f) ? [{ header: f.label, width: 30 }]
       : [{ header: `${f.label}(이전)`, width: 20 }, { header: `${f.label}(이후)`, width: 20 }]),
   ];
   ws.getRow(1).font = { bold: true };
@@ -6914,6 +6930,7 @@ async function downloadReportCompareExcel() {
       const prevVal = it.type === 'new' ? '' : f.prev;
       const currVal = it.type === 'del' ? '' : f.curr;
       if (f.type === 'number') row.push(prevVal, currVal, (it.type === 'new' || it.type === 'del') ? '' : f.diff);
+      else if (rcIsNameField(f)) row.push(f.curr);
       else row.push(prevVal, currVal);
     });
     ws.addRow(row);
