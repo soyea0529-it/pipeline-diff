@@ -6786,8 +6786,7 @@ function runReportCompare() {
     items.push({ key, type, fields, countA: rowsA.length, countB: rowsB.length, rowCountChanged });
   });
 
-  const order = { new: 0, up: 1, down: 2, changed: 3, same: 4, del: 5 };
-  items.sort((a, b) => (order[a.type] - order[b.type]) || a.key.localeCompare(b.key));
+  rcSortItems(items);
 
   RC_RESULT = { items, mapping: RC_MAPPING.slice(), fileNameA: RC_FILE_A.fileName, fileNameB: RC_FILE_B.fileName };
   statusEl.textContent = `✓ 비교 완료 (총 ${items.length}건)`;
@@ -6809,6 +6808,12 @@ function rcFieldCellHtml(f, type) {
   return `<span class="diff-changed">${escHtml(f.prev || '-')} → ${escHtml(f.curr || '-')}</span>`;
 }
 
+// 결과 정렬: 변동이 있는 항목(신규 → 증가 → 감소 → 삭제 → 변동)을 먼저, 변경 없이 유지된 항목은 맨 뒤에
+const RC_TYPE_ORDER = { new: 0, up: 1, down: 2, del: 3, changed: 4, same: 5 };
+function rcSortItems(items) {
+  return items.sort((a, b) => (RC_TYPE_ORDER[a.type] - RC_TYPE_ORDER[b.type]) || a.key.localeCompare(b.key));
+}
+
 function renderReportCompareResult() {
   const el = document.getElementById('rc-result');
   if (!RC_RESULT || !RC_RESULT.items.length) {
@@ -6816,6 +6821,7 @@ function renderReportCompareResult() {
     return;
   }
   const { items, mapping } = RC_RESULT;
+  rcSortItems(items);
   const by = { new: [], del: [], up: [], down: [], changed: [], same: [] };
   items.forEach(it => by[it.type].push(it));
 
@@ -6906,6 +6912,7 @@ async function restoreReportCompareState() {
 async function downloadReportCompareExcel() {
   if (!RC_RESULT || !RC_RESULT.items.length) return;
   const { items, mapping, fileNameA, fileNameB } = RC_RESULT;
+  rcSortItems(items);
   const keyField = mapping.find(f => f.key);
   const otherFields = mapping.filter(f => !f.key);
   const labelMap = { new: '신규', del: '삭제', up: '증가', down: '감소', changed: '변동', same: '유지' };
